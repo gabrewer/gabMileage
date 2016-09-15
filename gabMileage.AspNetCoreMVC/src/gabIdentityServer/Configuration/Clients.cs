@@ -20,17 +20,17 @@ namespace gabIdentityServer.Configuration
 
                     RedirectUris = new List<string>
                     {
-                        "http://localhost:47842/signin-oidc"
+                        "http://localhost:47834/signin-oidc"
                     },
 
                     PostLogoutRedirectUris = new List<string>
                     {
-                        "http://localhost:47842/"
+                        "http://localhost:47834/"
                     },
 
                     ClientSecrets = new List<Secret>
                     {
-                        new Secret("secret".Sha256())
+                        new Secret("diVeTryCOner".Sha256())
                     },
 
                     AllowedScopes = new List<string>
