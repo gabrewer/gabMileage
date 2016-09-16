@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
-using IdentityServer4.Quickstart;
+using IdentityServer4.Services.InMemory;
 using IdentityServer4.Services;
 using gabIdentityServer.Models;
 using System.Text.Encodings.Web;
