@@ -12,7 +12,7 @@ namespace gabMileage.AspNetCoreMVC.Controllers
         [Authorize]
         public ActionResult Login()
         {
-            return RedirectToAction("Index", "Home");
+            return RedirectToAction("Index", "Mileage");
         }
 
         public async Task Logout()
