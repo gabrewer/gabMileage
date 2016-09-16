@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
@@ -27,15 +28,27 @@ namespace gabMileage.WebApi
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            // Add framework services.
-            services.AddMvc();
+            services.AddMvcCore()
+                .AddJsonFormatters()
+                .AddAuthorization();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IHostingEnvironment env, ILoggerFactory loggerFactory)
         {
+            JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
+
             loggerFactory.AddConsole(Configuration.GetSection("Logging"));
             loggerFactory.AddDebug();
+
+            app.UseIdentityServerAuthentication(new IdentityServerAuthenticationOptions
+            {
+                Authority = "http://localhost:47627",
+                RequireHttpsMetadata = false,
+
+                ScopeName = "gabMileageApi",
+                AutomaticAuthenticate = true
+            });
 
             app.UseMvc();
         }
