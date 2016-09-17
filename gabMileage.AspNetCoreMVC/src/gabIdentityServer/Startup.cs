@@ -11,13 +11,16 @@ using gabIdentityServer.Configuration;
 using System.Security.Cryptography.X509Certificates;
 using System.IO;
 using IdentityServer4;
+using gabIdentityServer.Models;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using gabIdentityServer.Data;
+using gabIdentityServer.Services;
 
 namespace gabIdentityServer
 {
     public class Startup
     {
-        private readonly IHostingEnvironment _environment;
-
         public Startup(IHostingEnvironment env)
         {
             var builder = new ConfigurationBuilder()
@@ -27,7 +30,14 @@ namespace gabIdentityServer
                 .AddEnvironmentVariables();
             Configuration = builder.Build();
 
-            _environment = env;
+            if (env.IsDevelopment())
+            {
+                // For more details on using the user secret store see http://go.microsoft.com/fwlink/?LinkID=532709
+                //builder.AddUserSecrets();
+            }
+
+            builder.AddEnvironmentVariables();
+            Configuration = builder.Build();
         }
 
         public IConfigurationRoot Configuration { get; }
@@ -35,16 +45,35 @@ namespace gabIdentityServer
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            var cert = new X509Certificate2(Path.Combine(_environment.ContentRootPath, "idsvr3test.pfx"), "idsrv3test");
+            services.AddDbContext<ApplicationDbContext>(options =>
+                options.UseSqlServer(Configuration.GetConnectionString("DefaultConnection")));
 
-            services.AddMvc();
+            services.AddIdentity<ApplicationUser, IdentityRole>()
+                .AddEntityFrameworkStores<ApplicationDbContext>()
+                .AddDefaultTokenProviders();
 
-            var builder = services.AddIdentityServer()
-                .SetSigningCredential(cert)
-                .AddInMemoryStores()
-                .AddInMemoryClients(Clients.Get())
+            services.AddMvc(o => o.Conventions.Add(new FeatureConvention()))
+                .AddRazorOptions(options =>
+                {
+                    // {0} - Action Name
+                    // {1} - Controller Name
+                    // {2} - Area Name
+                    // {3} - Feature Name
+                    options.ViewLocationFormats.Clear();
+                    options.ViewLocationFormats.Add("/Features/{3}/{1}/{0}.cshtml");
+                    options.ViewLocationFormats.Add("/Features/{3}/{0}.cshtml");
+                    options.ViewLocationFormats.Add("/Features/Shared/{0}.cshtml");
+
+                    options.ViewLocationExpanders.Add(new FeatureViewLocationExpander());
+                });
+
+            services.AddTransient<IEmailSender, MessageServices>();
+            services.AddTransient<ISmsSender, MessageServices>();
+
+            var builder = services.AddDeveloperIdentityServer()
                 .AddInMemoryScopes(Scopes.Get())
-                .AddInMemoryUsers(Users.Get());
+                .AddInMemoryClients(Clients.Get())
+                .AddAspNetIdentity<ApplicationUser>();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -56,6 +85,7 @@ namespace gabIdentityServer
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
+                app.UseDatabaseErrorPage();
                 app.UseBrowserLink();
             }
             else
@@ -87,6 +117,7 @@ namespace gabIdentityServer
                 ClientSecret = "3gcoTrEDPPJ0ukn_aYYT6PWo"
             });
 
+            app.UseIdentity();
             app.UseIdentityServer();
 
             app.UseStaticFiles();
