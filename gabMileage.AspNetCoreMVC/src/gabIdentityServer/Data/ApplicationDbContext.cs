@@ -11,22 +11,9 @@ namespace gabIdentityServer.Data
 {
     public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     {
-        private readonly string _connectionString;
-
-        public ApplicationDbContext()
-            : base()
-        {
-        }
-
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
             : base(options)
         {
-        }
-
-        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-        {
-            optionsBuilder.UseSqlServer("Data:DefaultConnection:ConnectionString");
-
         }
 
 
