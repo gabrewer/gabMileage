@@ -10,11 +10,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		global.json = global.json
 	EndProjectSection
 EndProject
-Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "gabIdentityServer", "src\gabIdentityServer\gabIdentityServer.xproj", "{07D39D43-DF7B-4990-87B8-B2731AE91218}"
+Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "gabIdentityServer", "gabIdentityServer\gabIdentityServer.xproj", "{07D39D43-DF7B-4990-87B8-B2731AE91218}"
 EndProject
-Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "gabMileage.AspNetCoreMVC", "src\gabMileage.AspNetCoreMVC\gabMileage.AspNetCoreMVC.xproj", "{A61A220E-8ECC-431B-B6AA-0DE8EFBFB0B0}"
+Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "gabMileage.AspNetCoreMVC", "AspNetCoreMVC\gabMileage.AspNetCoreMVC.xproj", "{A61A220E-8ECC-431B-B6AA-0DE8EFBFB0B0}"
 EndProject
-Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "gabMileage.WebApi", "src\gabMileage.WebApi\gabMileage.WebApi.xproj", "{97F76AAA-6C4D-4979-819A-BFAF05D9271B}"
+Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "gabMileage.WebApi", "AspNetCoreWebApi\gabMileage.WebApi.xproj", "{97F76AAA-6C4D-4979-819A-BFAF05D9271B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
