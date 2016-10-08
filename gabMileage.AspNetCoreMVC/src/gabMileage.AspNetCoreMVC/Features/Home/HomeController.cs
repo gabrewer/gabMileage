@@ -15,14 +15,14 @@ namespace gabMileage.AspNetCoreMVC.Controllers
 
         public IActionResult About()
         {
-            ViewData["Message"] = "Your application description page.";
+            ViewData["Message"] = "gabMileage - A testing ground for new development technology.";
 
             return View();
         }
 
         public IActionResult Contact()
         {
-            ViewData["Message"] = "Your contact page.";
+            ViewData["Message"] = "GAB Software";
 
             return View();
         }
