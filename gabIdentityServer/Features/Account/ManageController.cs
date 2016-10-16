@@ -8,7 +8,7 @@ using gabIdentityServer.Services;
 using gabIdentityServer.Features.Account;
 using System.Linq;
 
-namespace gabIdentityServer.Features.Manage
+namespace gabIdentityServer.Features.Account
 {
     [Authorize]
     public class ManageController : Controller

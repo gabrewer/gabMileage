@@ -1,4 +1,4 @@
-﻿namespace gabIdentityServer.Features.Manage
+﻿namespace gabIdentityServer.Features.Account
 {
     public class RemoveLoginViewModel
     {

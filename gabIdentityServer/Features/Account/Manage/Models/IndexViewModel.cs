@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 using Microsoft.AspNetCore.Identity;
 
-namespace gabIdentityServer.Features.Manage
+namespace gabIdentityServer.Features.Account
 {
     public class IndexViewModel
     {

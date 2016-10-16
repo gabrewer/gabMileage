@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace gabIdentityServer.Features.Manage
+namespace gabIdentityServer.Features.Account
 {
     public class VerifyPhoneNumberViewModel
     {
