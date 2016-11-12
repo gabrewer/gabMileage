@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "BundlerMinifier.Core": "2.2.281",
+    "IdentityModel": "2.0.1",
     "Microsoft.AspNetCore.Authentication.Cookies": "1.0.0",
     "Microsoft.AspNetCore.Authentication.OpenIdConnect": "1.0.0",
     "Microsoft.AspNetCore.Diagnostics": "1.0.0",
