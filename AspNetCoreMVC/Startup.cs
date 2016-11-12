@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
+using IdentityModel;
 
 namespace gabMileage.AspNetCoreMVC
 {
@@ -81,7 +83,14 @@ namespace gabMileage.AspNetCoreMVC
                 ClientSecret = "diVeTryCOner",
                 ResponseType = "code id_token",
                 GetClaimsFromUserInfoEndpoint = true,
-                SaveTokens = true
+                SaveTokens = true,
+                TokenValidationParameters = new TokenValidationParameters
+
+                {
+                    NameClaimType = JwtClaimTypes.Name,
+                    RoleClaimType = JwtClaimTypes.Role,
+
+                }
             };
 
             oidcOptions.Scope.Clear();

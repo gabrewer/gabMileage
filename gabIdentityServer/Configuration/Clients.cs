@@ -18,15 +18,8 @@ namespace gabIdentityServer.Configuration
                     ClientName = "gabMileage MVC Client",
                     AllowedGrantTypes = GrantTypes.Hybrid,
 
-                    RedirectUris = new List<string>
-                    {
-                        "http://localhost:47834/signin-oidc"
-                    },
-
-                    PostLogoutRedirectUris = new List<string>
-                    {
-                        "http://localhost:47834/"
-                    },
+                    RedirectUris = { "http://localhost:47834/signin-oidc" },
+                    PostLogoutRedirectUris = { "http://localhost:47834/" },
 
                     ClientSecrets = new List<Secret>
                     {

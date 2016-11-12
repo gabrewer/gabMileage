@@ -70,7 +70,9 @@ namespace gabIdentityServer
             services.AddTransient<IEmailSender, MessageServices>();
             services.AddTransient<ISmsSender, MessageServices>();
 
-            var builder = services.AddDeveloperIdentityServer()
+            var builder = services.AddIdentityServer()
+                .AddTemporarySigningCredential()
+                .AddInMemoryPersistedGrants()
                 .AddInMemoryScopes(Scopes.Get())
                 .AddInMemoryClients(Clients.Get())
                 .AddAspNetIdentity<ApplicationUser>();
@@ -121,13 +123,7 @@ namespace gabIdentityServer
             app.UseIdentityServer();
 
             app.UseStaticFiles();
-
-            app.UseMvc(routes =>
-            {
-                routes.MapRoute(
-                    name: "default",
-                    template: "{controller=Home}/{action=Index}/{id?}");
-            });
+            app.UseMvcWithDefaultRoute();
         }
     }
 }
