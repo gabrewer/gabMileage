@@ -119,6 +119,12 @@ namespace gabIdentityServer
                 ClientSecret = "3gcoTrEDPPJ0ukn_aYYT6PWo"
             });
 
+            app.Use(async (context, next) =>
+            {
+                context.Response.Headers.Add("Content-Security-Policy", "script-src 'unsafe-inline'");
+                await next();
+            });
+
             app.UseIdentity();
             app.UseIdentityServer();
 
