@@ -22,15 +22,23 @@ namespace gabMileage.AspNetCoreMVC.Controllers
         const string mileageApiUrl = "http://localhost:47853/mileage";
 
         [Authorize]
-        public IActionResult Index()
+        public async Task<IActionResult> Index()
         {
-            return View();
+            var vm = await createViewModel();
+            return View(vm);
         }
 
         [Authorize]
         [HttpPost]
-        public async Task<IActionResult> RecordMileage(MileageViewModel mileage)
+        public async Task<IActionResult> RecordMileage(MileageViewModel viewModel)
         {
+            MileageFormViewModel mileage = viewModel.Form;
+
+            if (!ModelState.IsValid)
+            {
+                return View(viewModel);
+            }
+
             Mileage mileageContent = new Mileage()
             {
                 FilledAt = new DateTime(mileage.FilledDate.Year, mileage.FilledDate.Month, mileage.FilledDate.Day, mileage.FilledTime.Hour, mileage.FilledTime.Minute, mileage.FilledTime.Second),
@@ -41,28 +49,42 @@ namespace gabMileage.AspNetCoreMVC.Controllers
                 Station = mileage.Station
             };
 
-            var accessToken = await HttpContext.Authentication.GetTokenAsync("access_token");
-            var client = new HttpClient();
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
+            var client = getHttpClient();
             var content = new StringContent(JsonConvert.SerializeObject(mileageContent), Encoding.UTF8, "application/json");
             var response = await client.PostAsync(mileageApiUrl, content);
 
-            return View("Index");
+            return RedirectToAction("Success");
         }
 
-        [Authorize]
-        public async Task<IActionResult> CallApi()
+        public async Task<IActionResult> Success()
         {
-            var accessToken = await HttpContext.Authentication.GetTokenAsync("access_token");
+            var vm = await createViewModel();
+            return View("Index", vm);
+        }
+
+        private async Task<MileageViewModel> createViewModel()
+        {
+            ModelState.Clear();
+            var vm = new MileageViewModel();
+            vm.MileageRecords = await getMileageRecords();
+            return vm;
+        }
+
+        private async Task<List<Mileage>> getMileageRecords()
+        {
+            var client = getHttpClient();
+            var response = await client.GetStringAsync(mileageApiUrl);
+            return JsonConvert.DeserializeObject<List<Mileage>>(response);
+        }
+
+        private HttpClient getHttpClient()
+        {
+            var accessToken = HttpContext.Authentication.GetTokenAsync("access_token").Result;
             var client = new HttpClient();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-
-            var response = await client.GetStringAsync("http://localhost:47853/mileage");
-            ViewBag.Json = JArray.Parse(response).ToString();
-
-            return View("Index");
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            return client;
         }
     }
 }

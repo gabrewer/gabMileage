@@ -1,10 +1,11 @@
 ﻿using NodaTime;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
 namespace gabMileage.AspNetCoreMVC.Features.Mileage.Models
 {
-    public class MileageViewModel
+    public class MileageFormViewModel
     {
         [DataType(DataType.Date)]
         [Required]
@@ -33,5 +34,12 @@ namespace gabMileage.AspNetCoreMVC.Features.Mileage.Models
 
         [Display(Name = "Gas Station")]
         public string Station { get; set; }
+    }
+
+    public class MileageViewModel
+    {
+        public MileageFormViewModel Form { get; set; }
+        public List<Mileage> MileageRecords { get; set; }
+
     }
 }

@@ -6,60 +6,82 @@
 <form asp-controller="Mileage" asp-action="RecordMileage" method="post" class="form-horizontal">
     <fieldset>
         <div class="form-group">
-            <label asp-for="FilledDate" class="col-md-2"></label>
+            <label asp-for="Form.FilledDate" class="col-md-2"></label>
             <div class="col-md-10">
-                <input asp-for="FilledDate" type="date" class="form-control" />
-                <span asp-validation-for="FilledDate"></span>
+                <input asp-for="Form.FilledDate" type="date" class="form-control" />
+                <span asp-validation-for="Form.FilledDate"></span>
             </div>
         </div>
         <div class="form-group">
-            <label asp-for="FilledTime" class="col-md-2"></label>
+            <label asp-for="Form.FilledTime" class="col-md-2"></label>
             <div class="col-md-10">
-                <input asp-for="FilledTime" type="time" class="form-control" />
-                <span asp-validation-for="FilledTime"></span>
+                <input asp-for="Form.FilledTime" type="time" class="form-control" />
+                <span asp-validation-for="Form.FilledTime"></span>
             </div>
         </div>
         <div class="form-group">
-            <label asp-for="StartingMileage" class="col-md-2"></label>
+            <label asp-for="Form.StartingMileage" class="col-md-2"></label>
             <div class="col-md-10">
-                <input asp-for="StartingMileage" class="form-control" />
-                <span asp-validation-for="StartingMileage"></span>
+                <input asp-for="Form.StartingMileage" class="form-control" />
+                <span asp-validation-for="Form.StartingMileage"></span>
             </div>
         </div>
         <div class="form-group">
-            <label asp-for="EndingMileage" class="col-md-2"></label>
+            <label asp-for="Form.EndingMileage" class="col-md-2"></label>
             <div class="col-md-10">
-                <input asp-for="EndingMileage" class="form-control" />
-                <span asp-validation-for="EndingMileage"></span>
+                <input asp-for="Form.EndingMileage" class="form-control" />
+                <span asp-validation-for="Form.EndingMileage"></span>
             </div>
         </div>
         <div class="form-group">
-            <label asp-for="Gallons" class="col-md-2"></label>
+            <label asp-for="Form.Gallons" class="col-md-2"></label>
             <div class="col-md-10">
-                <input asp-for="Gallons" class="form-control" />
-                <span asp-validation-for="Gallons"></span>
+                <input asp-for="Form.Gallons" class="form-control" />
+                <span asp-validation-for="Form.Gallons"></span>
             </div>
         </div>
         <div class="form-group">
-            <label asp-for="Cost" class="col-md-2"></label>
+            <label asp-for="Form.Cost" class="col-md-2"></label>
             <div class="col-md-10">
-                <input asp-for="Cost" class="form-control" />
-                <span asp-validation-for="Cost"></span>
+                <input asp-for="Form.Cost" class="form-control" />
+                <span asp-validation-for="Form.Cost"></span>
             </div>
         </div>
         <div class="form-group">
-            <label asp-for="Station" class="col-md-2"></label>
+            <label asp-for="Form.Station" class="col-md-2"></label>
             <div class="col-md-10">
-                <input asp-for="Station" class="form-control" />
-                <span asp-validation-for="Station"></span>
+                <input asp-for="Form.Station" class="form-control" />
+                <span asp-validation-for="Form.Station"></span>
             </div>
         </div>
     </fieldset>
     <button type="submit">Save</button>
 </form>
 
-
-<a href="/mileage/callapi">Call API</a>
-<h2>API Result</h2>
-<pre>@ViewBag.Json</pre>
-
+<div class="table-responsive">
+    <table class="table-bordered">
+        <thead>
+            <tr>
+                <th>Filled At</th>
+                <th>Starting Mileage</th>
+                <th>Ending Mileage</th>
+                <th>Gallons</th>
+                <th>Cost</th>
+                <th>Station</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var mileage in Model.MileageRecords)
+            {
+                <tr>
+                    <td>@mileage.FilledAt</td>
+                    <td>@mileage.StartingMileage</td>
+                    <td>@mileage.EndingMileage</td>
+                    <td>@mileage.Gallons</td>
+                    <td>@mileage.Cost</td>
+                    <td>@mileage.Station</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
