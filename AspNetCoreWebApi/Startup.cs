@@ -8,6 +8,9 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using gabMileage.WebApi.Data;
+using Microsoft.EntityFrameworkCore;
+using AutoMapper;
 
 namespace gabMileage.WebApi
 {
@@ -28,6 +31,10 @@ namespace gabMileage.WebApi
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
+            services.AddDbContext<MileageContext>(options => options.UseSqlServer(Configuration.GetConnectionString("DefaultConnection")));
+
+            services.AddAutoMapper(typeof(Startup));
+
             services.AddMvcCore()
                 .AddJsonFormatters()
                 .AddAuthorization();
