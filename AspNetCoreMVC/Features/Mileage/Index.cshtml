@@ -3,85 +3,91 @@
 
 <h2>GAB Mileage</h2>
 
-<form asp-controller="Mileage" asp-action="RecordMileage" method="post" class="form-horizontal">
-    <fieldset>
-        <div class="form-group">
-            <label asp-for="Form.FilledDate" class="col-md-2"></label>
-            <div class="col-md-10">
-                <input asp-for="Form.FilledDate" type="date" class="form-control" />
-                <span asp-validation-for="Form.FilledDate"></span>
-            </div>
-        </div>
-        <div class="form-group">
-            <label asp-for="Form.FilledTime" class="col-md-2"></label>
-            <div class="col-md-10">
-                <input asp-for="Form.FilledTime" type="time" class="form-control" />
-                <span asp-validation-for="Form.FilledTime"></span>
-            </div>
-        </div>
-        <div class="form-group">
-            <label asp-for="Form.StartingMileage" class="col-md-2"></label>
-            <div class="col-md-10">
-                <input asp-for="Form.StartingMileage" class="form-control" />
-                <span asp-validation-for="Form.StartingMileage"></span>
-            </div>
-        </div>
-        <div class="form-group">
-            <label asp-for="Form.EndingMileage" class="col-md-2"></label>
-            <div class="col-md-10">
-                <input asp-for="Form.EndingMileage" class="form-control" />
-                <span asp-validation-for="Form.EndingMileage"></span>
-            </div>
-        </div>
-        <div class="form-group">
-            <label asp-for="Form.Gallons" class="col-md-2"></label>
-            <div class="col-md-10">
-                <input asp-for="Form.Gallons" class="form-control" />
-                <span asp-validation-for="Form.Gallons"></span>
-            </div>
-        </div>
-        <div class="form-group">
-            <label asp-for="Form.Cost" class="col-md-2"></label>
-            <div class="col-md-10">
-                <input asp-for="Form.Cost" class="form-control" />
-                <span asp-validation-for="Form.Cost"></span>
-            </div>
-        </div>
-        <div class="form-group">
-            <label asp-for="Form.Station" class="col-md-2"></label>
-            <div class="col-md-10">
-                <input asp-for="Form.Station" class="form-control" />
-                <span asp-validation-for="Form.Station"></span>
-            </div>
-        </div>
-    </fieldset>
-    <button type="submit">Save</button>
-</form>
-
-<div class="table-responsive">
-    <table class="table-bordered">
-        <thead>
-            <tr>
-                <th>Filled At</th>
-                <th>Starting Mileage</th>
-                <th>Ending Mileage</th>
-                <th>Gallons</th>
-                <th>Cost</th>
-                <th>Station</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var mileage in Model.MileageRecords)
-            {
-                <tr>
-                    <td>@mileage.FilledAt</td>
-                    <td>@mileage.StartingMileage</td>
-                    <td>@mileage.EndingMileage</td>
-                    <td>@mileage.Gallons</td>
-                    <td>@mileage.Cost</td>
-                    <td>@mileage.Station</td>
-                </tr>
-            }
-        </tbody>
-    </table>
+<div class="row bottom-margin">
+    <div class="col-md-12">
+        <form asp-controller="Mileage" asp-action="RecordMileage" method="post" class="form-horizontal">
+            <fieldset>
+                <div class="form-group">
+                    <label asp-for="Form.FilledDate" class="col-md-2"></label>
+                    <div class="col-md-10">
+                        <input asp-for="Form.FilledDate" type="date" class="form-control" />
+                        <span asp-validation-for="Form.FilledDate"></span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label asp-for="Form.FilledTime" class="col-md-2"></label>
+                    <div class="col-md-10">
+                        <input asp-for="Form.FilledTime" type="time" class="form-control" />
+                        <span asp-validation-for="Form.FilledTime"></span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label asp-for="Form.StartingMileage" class="col-md-2"></label>
+                    <div class="col-md-10">
+                        <input asp-for="Form.StartingMileage" class="form-control" />
+                        <span asp-validation-for="Form.StartingMileage"></span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label asp-for="Form.EndingMileage" class="col-md-2"></label>
+                    <div class="col-md-10">
+                        <input asp-for="Form.EndingMileage" class="form-control" />
+                        <span asp-validation-for="Form.EndingMileage"></span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label asp-for="Form.Gallons" class="col-md-2"></label>
+                    <div class="col-md-10">
+                        <input asp-for="Form.Gallons" class="form-control" />
+                        <span asp-validation-for="Form.Gallons"></span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label asp-for="Form.Cost" class="col-md-2"></label>
+                    <div class="col-md-10">
+                        <input asp-for="Form.Cost" class="form-control" />
+                        <span asp-validation-for="Form.Cost"></span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label asp-for="Form.Station" class="col-md-2"></label>
+                    <div class="col-md-10">
+                        <input asp-for="Form.Station" class="form-control" />
+                        <span asp-validation-for="Form.Station"></span>
+                    </div>
+                </div>
+            </fieldset>
+            <button type="submit">Save</button>
+        </form>
+    </div>
 </div>
+
+<div class="row table-responsive bottom-margin">
+    <div class="col-md-12">
+        <table class="table table-bordered table-striped">
+            <thead>
+                <tr>
+                    <th>Filled At</th>
+                    <th>Starting Mileage</th>
+                    <th>Ending Mileage</th>
+                    <th>Gallons</th>
+                    <th>Cost</th>
+                    <th>Station</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var mileage in Model.MileageRecords)
+                {
+                    <tr>
+                        <td>@mileage.FilledAt</td>
+                        <td>@mileage.StartingMileage</td>
+                        <td>@mileage.EndingMileage</td>
+                        <td>@mileage.Gallons</td>
+                        <td>@mileage.Cost</td>
+                        <td>@mileage.Station</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+ </div>
