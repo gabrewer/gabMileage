@@ -82,7 +82,7 @@ namespace gabMileage.AspNetCoreMVC.Controllers
         {
             var accessToken = HttpContext.Authentication.GetTokenAsync("access_token").Result;
             var client = new HttpClient();
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            client.SetBearerToken(accessToken);
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             return client;
         }

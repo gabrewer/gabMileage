@@ -1,14 +1,32 @@
-﻿using IdentityServer4.Models;
+﻿using IdentityServer4;
+using IdentityServer4.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace gabIdentityServer.Configuration
+namespace gabIdentityServer
 {
-    public class Clients
+    public class Config
     {
-        public static IEnumerable<Client> Get()
+        public static IEnumerable<IdentityResource> GetIdentityResources()
+        {
+            return new List<IdentityResource>
+            {
+                new IdentityResources.OpenId(),
+                new IdentityResources.Profile(),
+            };
+        }
+
+        public static IEnumerable<ApiResource> GetApiResources()
+        {
+            return new List<ApiResource>
+            {
+                new ApiResource("gabMileageApi", "gabMileage API")
+            };
+        }
+
+        public static IEnumerable<Client> GetClients()
         {
             return new List<Client>
             {
@@ -28,8 +46,8 @@ namespace gabIdentityServer.Configuration
 
                     AllowedScopes = new List<string>
                     {
-                        StandardScopes.OpenId.Name,
-                        StandardScopes.Profile.Name,
+                        IdentityServerConstants.StandardScopes.OpenId,
+                        IdentityServerConstants.StandardScopes.Profile,
                         "gabMileageApi"
                     }
                 }
@@ -37,4 +55,3 @@ namespace gabIdentityServer.Configuration
         }
     }
 }
-

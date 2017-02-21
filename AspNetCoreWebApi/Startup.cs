@@ -43,8 +43,6 @@ namespace gabMileage.WebApi
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IHostingEnvironment env, ILoggerFactory loggerFactory)
         {
-            JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
-
             loggerFactory.AddConsole(Configuration.GetSection("Logging"));
             loggerFactory.AddDebug();
 
@@ -52,9 +50,7 @@ namespace gabMileage.WebApi
             {
                 Authority = "http://localhost:47627",
                 RequireHttpsMetadata = false,
-
-                ScopeName = "gabMileageApi",
-                AutomaticAuthenticate = true
+                ApiName = "gabMileageApi"
             });
 
             app.UseMvc();

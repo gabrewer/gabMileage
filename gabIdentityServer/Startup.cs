@@ -7,7 +7,6 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using gabIdentityServer.Configuration;
 using System.Security.Cryptography.X509Certificates;
 using System.IO;
 using IdentityServer4;
@@ -73,8 +72,9 @@ namespace gabIdentityServer
             var builder = services.AddIdentityServer()
                 .AddTemporarySigningCredential()
                 .AddInMemoryPersistedGrants()
-                .AddInMemoryScopes(Scopes.Get())
-                .AddInMemoryClients(Clients.Get())
+                .AddInMemoryIdentityResources(Config.GetIdentityResources())
+                .AddInMemoryApiResources(Config.GetApiResources())
+                .AddInMemoryClients(Config.GetClients())
                 .AddAspNetIdentity<ApplicationUser>();
         }
 
