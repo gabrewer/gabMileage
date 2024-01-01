@@ -1,0 +1,59 @@
+﻿@page "/mileage"
+@attribute [StreamRendering]
+
+<PageTitle>MileageRecord Record</PageTitle>
+
+<h1>MileageRecord Record</h1>
+
+@if (MileageRecords == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table>
+        <thead>
+        <tr>
+            <th>Filled At</th>
+            <th>Starting MileageRecord</th>
+            <th>Ending MileageRecord</th>
+            <th>Gallons</th>
+            <th>Cost</th>
+            <th>Station</th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var mileage in MileageRecords)
+        {
+            <tr>
+                <td>@mileage.FilledAt</td>
+                <td>@mileage.StartingMileage</td>
+                <td>@mileage.EndingMileage</td>
+                <td>@mileage.Gallons</td>
+                <td>@mileage.Cost</td>
+                <td>@mileage.Station</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private MileageRecord[]? MileageRecords;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Simulate asynchronous loading to demonstrate streaming rendering
+        await Task.Delay(500);
+
+        MileageRecords = Enumerable.Range(1, 5).Select(index => new MileageRecord
+        {
+            FilledAt = DateTime.Now.AddDays(index),
+            StartingMileage = 1000 * (index -1),
+            EndingMileage = 1000 * index,
+            Gallons = 10,
+            Cost = 20,
+            Station = "Shell"
+        }).ToArray();
+    }
+}
