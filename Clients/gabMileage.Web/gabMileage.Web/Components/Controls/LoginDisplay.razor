@@ -1,0 +1,14 @@
+﻿@using Microsoft.AspNetCore.Components.Authorization
+@rendermode InteractiveServer
+
+<AuthorizeView>
+    <Authorized>
+        <NavLink href="MicrosoftIdentity/Account/SignOut">Log Out</NavLink>
+    </Authorized>
+    <NotAuthorized>
+        <NavLink href="MicrosoftIdentity/Account/SignIn">Log In</NavLink>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+}
