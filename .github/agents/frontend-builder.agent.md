@@ -25,6 +25,16 @@ You are the Frontend Builder for **gabMileage**. You build the client-side appli
 
 **Adding packages:** Use the frontend package manager CLI — never edit `package.json` directly.
 
+## Before You Start
+
+Read these skill files — they define the exact patterns you must follow:
+
+- `.github/skills/tanstack-start/skills/tanstack-start/SKILL.md` — SSR, server functions, routing setup
+- `.github/skills/tanstack-router/skills/tanstack-router/SKILL.md` — file-based routing, loaders, search params
+- `.github/skills/tanstack-query/skills/tanstack-query/SKILL.md` — data fetching, mutations, cache management
+- `.github/skills/tanstack-form/skills/tanstack-form/SKILL.md` — form state and validation patterns
+- `.github/skills/playwright-blazor/SKILL.md` — Playwright test patterns (adapt for React)
+
 ## gabMileage Design Principles
 
 - **Fast entry** — logging a fill-up should take < 30 seconds on mobile

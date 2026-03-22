@@ -22,6 +22,19 @@ You are the Backend Builder for **gabMileage**. You build the server-side applic
 - `gabMileage.Tests.Unit` — xUnit unit tests (pure domain, no infrastructure)
 - `gabMileage.Tests.Integration` — xUnit integration tests (with Marten/Postgres)
 
+## Before You Start
+
+Read these skill files — they define the exact patterns you must follow:
+
+- `.github/skills/data-access/marten-event-sourcing.md` — aggregate structure, command handlers, projections, Wolverine integration
+- `.github/skills/data-access/SKILL.md` — Marten vs EF Core decision rules
+- `.github/skills/aspire-service-defaults/SKILL.md` — shared service configuration
+- `.github/skills/aspire-configuration/SKILL.md` — Aspire resource configuration
+- `.github/skills/csharp-coding-standards/SKILL.md` — naming, structure, conventions
+- `.github/skills/csharp-api-design/SKILL.md` — minimal API endpoint patterns
+- `.github/skills/serialization/SKILL.md` — JSON serialization with NodaTime
+- `.github/skills/microsoft-extensions-dependency-injection/SKILL.md` — DI registration patterns
+
 **Key patterns:**
 
 ### Commands and Events (WolverineFx + MartenDB)

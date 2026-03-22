@@ -1,0 +1,82 @@
+{
+  "runId": "20260322222751",
+  "sprint": "foundation-auth",
+  "branch": "feature/01-foundation-auth",
+  "startedAt": "2026-03-22T22:27:51.6193870Z",
+  "phases": {
+    "domainModeling": "running",
+    "apiContract": "pending",
+    "pmSummary": "pending",
+    "smokeTest": "pending"
+  },
+  "tasks": {
+    "TASK-001": {
+      "id": "TASK-001",
+      "status": "pending",
+      "attempts": 0,
+      "lastFeedback": null,
+      "startedAt": null,
+      "completedAt": null
+    },
+    "TASK-002": {
+      "id": "TASK-002",
+      "status": "pending",
+      "attempts": 0,
+      "lastFeedback": null,
+      "startedAt": null,
+      "completedAt": null
+    },
+    "TASK-003": {
+      "id": "TASK-003",
+      "status": "pending",
+      "attempts": 0,
+      "lastFeedback": null,
+      "startedAt": null,
+      "completedAt": null
+    },
+    "TASK-004": {
+      "id": "TASK-004",
+      "status": "pending",
+      "attempts": 0,
+      "lastFeedback": null,
+      "startedAt": null,
+      "completedAt": null
+    },
+    "TASK-005": {
+      "id": "TASK-005",
+      "status": "pending",
+      "attempts": 0,
+      "lastFeedback": null,
+      "startedAt": null,
+      "completedAt": null
+    },
+    "TASK-006": {
+      "id": "TASK-006",
+      "status": "pending",
+      "attempts": 0,
+      "lastFeedback": null,
+      "startedAt": null,
+      "completedAt": null
+    },
+    "TASK-007": {
+      "id": "TASK-007",
+      "status": "pending",
+      "attempts": 0,
+      "lastFeedback": null,
+      "startedAt": null,
+      "completedAt": null
+    }
+  },
+  "issues": {
+    "epicIssue": 1,
+    "taskIssues": {
+      "TASK-001": 2,
+      "TASK-002": 3,
+      "TASK-003": 4,
+      "TASK-004": 5,
+      "TASK-005": 6,
+      "TASK-006": 7,
+      "TASK-007": 8
+    }
+  }
+}

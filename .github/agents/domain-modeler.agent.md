@@ -33,6 +33,15 @@ Define or update the domain model for this sprint's scope before any builders wr
 - NodaTime: all time values use `LocalDate` (for dates), `Instant` (for timestamps), `Duration` (for intervals)
 - No `DateTime` — always NodaTime types
 
+## Before You Start
+
+Read these skill files for authoritative patterns — they define the exact conventions to follow:
+
+- `.github/skills/data-access/marten-event-sourcing.md` — aggregate structure, event registration, projection patterns, stream naming
+- `.github/skills/data-access/SKILL.md` — when to use Marten vs EF Core
+- `.github/skills/csharp-type-design-performance/SKILL.md` — value object and record patterns
+- `.github/skills/aspire-service-defaults/SKILL.md` — service configuration conventions
+
 ## What You Must Produce
 
 Write a domain model document to `docs/domain/<sprint-name>.md` covering:

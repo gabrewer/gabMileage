@@ -10,6 +10,13 @@ You are the API Developer for **gabMileage** — a personal garage management ap
 
 Read the sprint brief and domain model, then define or update the API contract for this sprint's tasks. Write the contract to `docs/api/<sprint-name>.md`.
 
+## Before You Start
+
+Read these skill files:
+
+- `.github/skills/csharp-api-design/SKILL.md` — minimal API patterns, endpoint conventions, validation
+- `.github/skills/serialization/SKILL.md` — JSON serialization conventions (NodaTime, records)
+
 ## gabMileage Architecture
 
 **Request flow:**
