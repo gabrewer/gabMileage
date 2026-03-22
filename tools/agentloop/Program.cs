@@ -54,6 +54,9 @@ buildCommand.SetAction(async (result, ct) =>
     GitService wtGit;
     var worktreePrefix = branchFlag ?? (all ? "build-all" : prdName!);
 
+    // Track whether we reused an existing worktree (branch already checked out — skip setup)
+    var reusedWorktree = false;
+
     if (resume)
     {
         // Find the most recent existing worktree matching the prefix
@@ -61,6 +64,7 @@ buildCommand.SetAction(async (result, ct) =>
         if (wtDir is not null)
         {
             wtGit = new GitService(wtDir);
+            reusedWorktree = true;
             AnsiConsole.MarkupLine($"[rgb(99,102,241)]⬡[/]  [bold]Resuming in existing worktree[/]");
             AnsiConsole.MarkupLine($"[dim]  Work directory: {Markup.Escape(wtGit.WorkDir)}[/]");
             await CleanWorktreeAsync(wtGit.WorkDir);
@@ -127,8 +131,10 @@ buildCommand.SetAction(async (result, ct) =>
             AnsiConsole.MarkupLine($"[dim]  {Markup.Escape(parentBranch)} → {Markup.Escape(sprintBranch)}[/]");
             Console.WriteLine();
 
-            // Create stacked branch in the worktree
-            await wtGit.CreateStackedBranchAsync(sprintBranch, parentBranch);
+            // Create stacked branch in the worktree — skip if resuming into existing worktree
+            // (branch is already checked out there; trying again causes a git error)
+            if (!reusedWorktree || i > 0)
+                await wtGit.CreateStackedBranchAsync(sprintBranch, parentBranch);
 
             await RunSingleSprint(file, sprintBranch, resume, yes: true, wtGit.WorkDir);
             await CreateSprintPrAsync(sprintBranch, parentBranch, sprintNames[i], wtGit.WorkDir);
@@ -158,7 +164,9 @@ buildCommand.SetAction(async (result, ct) =>
             ? $"{branchFlag}/{prdName}"
             : $"feature/{prdName}";
 
-        await wtGit.CreateStackedBranchAsync(sprintBranch, baseBranch);
+        // Single sprint — skip branch setup if resuming into existing worktree
+        if (!reusedWorktree)
+            await wtGit.CreateStackedBranchAsync(sprintBranch, baseBranch);
         await RunSingleSprint(prdName!, sprintBranch, resume, yes, wtGit.WorkDir);
         await CreateSprintPrAsync(sprintBranch, baseBranch, prdName!, wtGit.WorkDir);
     }
