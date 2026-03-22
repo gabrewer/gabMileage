@@ -59,6 +59,10 @@ buildCommand.SetAction(async (result, ct) =>
 
     if (resume)
     {
+        // Prune any stale worktrees matching this prefix before trying to reuse or create one.
+        // Stale worktrees from killed runs hold branch locks that block checkout in new worktrees.
+        await PruneStaleWorktreesAsync(mainGit, worktreePrefix);
+
         // Find the most recent existing worktree matching the prefix
         var wtDir = FindExistingWorktree(worktreePrefix);
         if (wtDir is not null)
@@ -405,4 +409,52 @@ static string? FindExistingWorktree(string prefix)
     }
 
     return null;
+}
+
+/// <summary>
+/// Removes all worktrees matching the given prefix that are on auto-created wt/* branches.
+/// These are orphans from killed runs that hold no useful state but DO hold branch locks.
+/// Feature branches (feature/*) are preserved — FindExistingWorktree will reuse them.
+/// </summary>
+static async Task PruneStaleWorktreesAsync(GitService mainGit, string prefix)
+{
+    var repoRoot = Directory.GetCurrentDirectory();
+    var wtParent = Path.GetFullPath(Path.Combine(repoRoot, "..", "wt"));
+    if (!Directory.Exists(wtParent)) return;
+
+    var candidates = Directory.GetDirectories(wtParent, $"{prefix}-*");
+    foreach (var dir in candidates)
+    {
+        var headFile = Path.Combine(dir, ".git");
+        if (!File.Exists(headFile)) continue;
+
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("git", "branch --show-current")
+            {
+                WorkingDirectory = dir,
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+            };
+            using var proc = System.Diagnostics.Process.Start(psi)!;
+            var branch = proc.StandardOutput.ReadToEnd().Trim();
+            proc.WaitForExit();
+
+            // Only prune wt/* orphan worktrees — leave feature/* worktrees for FindExistingWorktree
+            if (!branch.StartsWith("wt/")) continue;
+
+            AnsiConsole.MarkupLine($"[dim]  Pruning stale worktree: {Markup.Escape(Path.GetFileName(dir))} ({Markup.Escape(branch)})[/]");
+            await mainGit.RemoveWorktreeAsync(dir);
+        }
+        catch { /* best effort */ }
+    }
+
+    // Also prune any git-registered but missing worktrees
+    var prunePsi = new System.Diagnostics.ProcessStartInfo("git", "worktree prune")
+    {
+        WorkingDirectory = repoRoot,
+        UseShellExecute = false,
+    };
+    using var pruneProc = System.Diagnostics.Process.Start(prunePsi)!;
+    await pruneProc.WaitForExitAsync();
 }
