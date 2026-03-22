@@ -101,6 +101,7 @@ public static class AgentRunner
         var resultText = "";
         var exitCode = -1;
         var bytesWritten = 0;
+        var timedOut = false;
 
         // Per-agent timeout — kills the process if it hangs with no completion
         var timeoutMinutes = agent switch
@@ -166,6 +167,7 @@ public static class AgentRunner
         }
         catch (OperationCanceledException)
         {
+            timedOut = true;
             await logWriter.WriteLineAsync($"\n--- TIMEOUT: agent exceeded {timeoutMinutes} minute limit, process killed ---");
             display.Status = $"TIMED OUT after {timeoutMinutes}m";
             try { proc.Kill(entireProcessTree: true); } catch { /* best effort */ }
@@ -179,8 +181,7 @@ public static class AgentRunner
             await logWriter.WriteLineAsync($"\n--- STDERR ---\n{stderrText}");
 
         // On timeout, restart the agent — up to 3 restarts before giving up
-        var logContents = await File.ReadAllTextAsync(logPath);
-        if (logContents.Contains("TIMEOUT: agent exceeded"))
+        if (timedOut)
         {
             if (timeoutRetry < 3)
             {
