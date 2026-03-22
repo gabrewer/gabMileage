@@ -118,8 +118,11 @@ public static class AgentRunner
         var stderrTask = proc.StandardError.ReadToEndAsync();
 
         // Write log incrementally as output arrives — visible in real time, not just at the end
+        // FileShare.ReadWrite allows other processes to read the log while it's being written
+        // and prevents failures if a prior run left the file open
         Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
-        await using var logWriter = new StreamWriter(logPath, append: false) { AutoFlush = true };
+        var logStream = new FileStream(logPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
+        await using var logWriter = new StreamWriter(logStream) { AutoFlush = true };
 
         try
         {
