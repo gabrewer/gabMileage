@@ -1,0 +1,78 @@
+{
+  "sprint": "maintenance-tracking",
+  "description": "Enable maintenance tracking per vehicle: users define custom maintenance items with mileage and/or time intervals and warning thresholds, seed an initial baseline to avoid instant anxiety, record service events that reset the clock, and see clear OK/Due Soon/Overdue statuses with an accordion-based maintenance tab and full edit/delete flows.",
+  "createdAt": "2026-03-22T22:08:04.846Z",
+  "order": 4,
+  "phases": {
+    "domainModeling": true,
+    "apiContract": true
+  },
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Maintenance domain model: items + records + events",
+      "type": "backend",
+      "description": "Implement Maintenance vertical slice with event-sourced commands/events from Sprint 04: `DefineMaintenanceItemCommand` → `MaintenanceItemDefined` (includes initialLastPerformedDate/initialLastPerformedOdometer), `UpdateMaintenanceItemCommand` → `MaintenanceItemUpdated`, `RemoveMaintenanceItemCommand` → `MaintenanceItemRemoved`, `RecordMaintenanceCommand` → `MaintenancePerformed`, `UpdateMaintenanceRecordCommand` → `MaintenanceRecordUpdated`, `DeleteMaintenanceRecordCommand` → `MaintenanceRecordDeleted`. Ensure ownership is scoped by userId and IDs are UUIDs.",
+      "acceptanceCriteria": [
+        "DefineMaintenanceItemCommand persists an item with defaults (mileageWarning=500, timeWarningDays=14 when omitted)",
+        "RecordMaintenanceCommand creates a service record and updates projections",
+        "Removing an item removes it (and its history) from the maintenance tab read model"
+      ]
+    },
+    {
+      "id": "TASK-002",
+      "title": "Maintenance status engine (OK/DueSoon/Overdue + detail text)",
+      "type": "backend",
+      "description": "Implement the status calculation logic exactly as specified in Sprint 04. Inputs: lastServiceDate/lastServiceOdometer (from most recent record, else initial state), estimatedCurrentMileage (for Sprint 04 use the raw most-recent odometer reading from any source), and currentDate (LocalDate). Apply mileage-based and time-based rules, with \"worse status wins\" when both are configured. Special case: items with no history and no initial state must show Due Soon (amber) with detail \"No service history — log your first service to start tracking\" (never Overdue). Build human-readable `statusDetail` strings matching the brief examples.",
+      "acceptanceCriteria": [
+        "Items with no history and no initial state are Due Soon with the specified detail line",
+        "Combined intervals choose the worse status",
+        "Deleting the most recent service record recalculates status using the next most recent record (or initial state, or never-performed rule)"
+      ]
+    },
+    {
+      "id": "TASK-003",
+      "title": "MaintenanceTabData projection + sorting",
+      "type": "backend",
+      "description": "Create/read model projection `MaintenanceTabData { vehicleId, items, lastOdometer }` per contract. Items are sorted: overdue → dueSoon → ok; within each group alphabetical by item name. Each item includes records sorted reverse-chronological. Compute lastOdometer as the most recent odometer from any source (fuel logs or maintenance records).",
+      "acceptanceCriteria": [
+        "MaintenanceTabData.items follow the specified urgency+alphabetical sorting",
+        "Maintenance records are reverse-chronological within an item",
+        "lastOdometer reflects the most recent reading across fuel logs and maintenance records"
+      ]
+    },
+    {
+      "id": "TASK-004",
+      "title": "HTTP API contract for maintenance tab + commands",
+      "type": "both",
+      "description": "Define and implement the HTTP API surface for Sprint 04 (api-developer + backend-builder): fetch MaintenanceTabData, define/update/remove maintenance items, and record/update/delete service records. Ensure validation matches brief messages (name 1–100, intervals required, warning thresholds < interval, date not future, odometer bounds, notes length). Ensure ownership scoping and 404 semantics for cross-user access.",
+      "acceptanceCriteria": [
+        "Frontend can load MaintenanceTabData and receive status/statusDetail for each item",
+        "Validation errors match the brief requirements (interval required; warnings must be less than interval)",
+        "Cross-user access returns 404"
+      ]
+    },
+    {
+      "id": "TASK-005",
+      "title": "Maintenance UI: accordion list + add/edit item + log/edit service",
+      "type": "frontend",
+      "description": "Implement Vehicle Detail → Maintenance tab UI: urgency-sorted accordion cards with colored status dot, status detail, last performed line, and expanded service history with overflow menus. Implement pages: Add Maintenance Item (with collapsed \"When to warn me\" defaults and \"Starting point\" initial state fields), Edit Maintenance Item (no initial state section), Log Service, Edit Service Record. Implement confirmations: Remove Item confirmation dialog and Delete Service Record confirmation dialog with specified copy and toasts.",
+      "acceptanceCriteria": [
+        "Maintenance items render as an accordion, sorted overdue→dueSoon→ok and then alphabetical",
+        "Add Item requires at least one interval (mileage/time) and supports initial state seeding",
+        "Logging service updates last performed and status detail immediately after returning to the tab"
+      ]
+    },
+    {
+      "id": "TASK-006",
+      "title": "Tests: status logic + key UI flows",
+      "type": "both",
+      "description": "Add tests for Sprint 04: backend unit/integration tests for status transitions (mileage-only, time-only, combined, never-performed behavior) and record deletion fallback behavior; plus an automated UI test (Playwright preferred) that defines an item, logs service, and verifies status updates.",
+      "acceptanceCriteria": [
+        "Backend tests cover never-performed → Due Soon behavior and combined-interval worse-status selection",
+        "Backend tests cover deleting latest record and recalculating based on previous record/initial state",
+        "Automated UI test covers add item → log service → see updated last performed line"
+      ]
+    }
+  ]
+}

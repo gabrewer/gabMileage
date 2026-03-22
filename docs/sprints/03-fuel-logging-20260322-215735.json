@@ -1,0 +1,89 @@
+{
+  "sprint": "fuel-logging",
+  "description": "Bring the Fuel tab to life: users can log, view, edit, and delete fill-ups with blur-triggered auto-calculation of the third fuel field; the system computes per-fill-up MPG when valid (and suppresses it for partial/first/adjacent-partial fill-ups) and maintains correct sorting and recalculation after edits/deletes.",
+  "createdAt": "2026-03-22T22:08:04.846Z",
+  "order": 3,
+  "phases": {
+    "domainModeling": true,
+    "apiContract": true
+  },
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Fuel log domain events + commands + validation",
+      "type": "backend",
+      "description": "Implement the FuelLogs vertical slice using event sourcing. Add commands and events from the Sprint 03 brief: `RecordFuelLogCommand` (with client-generated `commandId` idempotency key), `UpdateFuelLogCommand`, `DeleteFuelLogCommand`; emit `FuelLogRecorded`, `FuelLogUpdated`, `FuelLogDeleted`. Enforce validation rules: date not in future; odometer positive int ≤ 9,999,999; at least two of {gallons,totalCost,pricePerGallon} on submit; numeric precision and max values per brief; notes ≤500; allow $0.00 cost and price/gal 0.000.",
+      "acceptanceCriteria": [
+        "RecordFuelLogCommand rejects submissions with fewer than two fuel fields with the specified error",
+        "Future dates are rejected with \"Date can't be in the future\"",
+        "Duplicate RecordFuelLogCommand with same commandId is idempotent"
+      ]
+    },
+    {
+      "id": "TASK-002",
+      "title": "FuelLogList projection + sorting + lastOdometer",
+      "type": "backend",
+      "description": "Create a Marten projection for `FuelLogList { vehicleId, logs, lastOdometer }` per Sprint 03 contract. Sort logs by date desc, then odometer desc for same-date ties. Compute lastOdometer as the most recent recorded odometer reading for the vehicle.",
+      "acceptanceCriteria": [
+        "FuelLogList.logs are sorted date desc, odometer desc for ties",
+        "lastOdometer reflects the newest reading by date/odometer ordering",
+        "Deleted logs are removed from the list projection"
+      ]
+    },
+    {
+      "id": "TASK-003",
+      "title": "Server-side MPG computation (with suppression rules)",
+      "type": "backend",
+      "description": "Compute `mpg` server-side for each FuelLog in the read model using the Sprint 03 rules: mpg = (current odometer − prior odometer) / current gallons. Suppress MPG (mpg = null) when: first fill-up (no prior), current isPartialFillUp, or prior fill-up isPartialFillUp. Ensure mpg values are recalculated correctly when a log is edited or deleted and when the baseline prior log changes.",
+      "acceptanceCriteria": [
+        "MPG is null for the first fill-up and for any partial fill-up",
+        "MPG is null for the fill-up immediately after a partial fill-up",
+        "Editing/deleting a fill-up causes adjacent mpg values to update according to the new prior baseline"
+      ]
+    },
+    {
+      "id": "TASK-004",
+      "title": "HTTP API contract for fuel logs",
+      "type": "both",
+      "description": "Define and implement the HTTP API for Sprint 03 (api-developer + backend-builder): endpoints to fetch FuelLogList for a vehicle (including lastOdometer), record a fuel log, update a fuel log, and delete a fuel log. Ensure response shapes match the brief’s `FuelLog` and `FuelLogList` contracts, including `calculatedField` and `mpg`.",
+      "acceptanceCriteria": [
+        "Frontend can fetch FuelLogList with mpg and calculatedField for each log",
+        "Record/update/delete endpoints return appropriate success and validation errors",
+        "API respects ownership scoping (404 for other user’s vehicle/log)"
+      ]
+    },
+    {
+      "id": "TASK-005",
+      "title": "Fuel tab UI: list + log fill-up form with auto-calc state machine",
+      "type": "frontend",
+      "description": "Implement the Vehicle Detail → Fuel tab populated UI per Sprint 03: reverse-chronological list cards, optional MPG badge, partial tag, notes indicator, and overflow menu (Edit/Delete). Add Log Fill-up page with fields/validation and the specified auto-calculation UX: field states empty/userEntered/calculated; calculate on blur when exactly two fields are userEntered; show \"calc\" pill on calculated field; handle editing calculated field (becomes userEntered and reassign calculated field using LIFO rule); handle all-three consistent (no calc); all-three inconsistent shows gentle note and prioritizes gallons+totalCost → recalc pricePerGallon.",
+      "acceptanceCriteria": [
+        "Auto-calculation fires on blur (not keystroke) and visually marks the calculated field",
+        "If all three fields are inconsistent, UI shows the specified inline note and recalculates price/gal using gallons+totalCost",
+        "Fuel list shows MPG badge only when mpg is non-null and hides it otherwise (no placeholder)"
+      ]
+    },
+    {
+      "id": "TASK-006",
+      "title": "Edit/delete fuel log flows",
+      "type": "frontend",
+      "description": "Implement Edit Fill-up page (pre-populated) with calc labeling, save changes flow, and delete flow. Delete must use a confirmation dialog (not undo toast) with the specified copy. After successful delete, the list updates and MPG badges reflect the server’s recalculated mpg values.",
+      "acceptanceCriteria": [
+        "Edit Fill-up pre-populates all fields and saves successfully",
+        "Delete action requires confirmation dialog and on success removes the entry",
+        "After edit/delete, the fuel list re-renders with correct sorting and mpg visibility"
+      ]
+    },
+    {
+      "id": "TASK-007",
+      "title": "Tests: mpg rules + auto-calc UX",
+      "type": "both",
+      "description": "Add tests for Sprint 03: backend tests for mpg suppression rules and sorting; frontend unit tests for the auto-calc state machine (including LIFO reassignment and inconsistent triple-input behavior); and a Playwright flow for log/edit/delete fill-up.",
+      "acceptanceCriteria": [
+        "Backend test covers partial suppression and adjacent recalculation behavior",
+        "Frontend unit tests cover the auto-calc rules (two fields → third calc, LIFO reassignment, inconsistent triple input)",
+        "Playwright test covers logging a fill-up and seeing it appear in the Fuel tab"
+      ]
+    }
+  ]
+}

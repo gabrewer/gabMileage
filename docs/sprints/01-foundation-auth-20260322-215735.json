@@ -1,0 +1,91 @@
+{
+  "sprint": "foundation-auth",
+  "description": "Stand up the full gabMileage Aspire solution (AppHost, ServiceDefaults, Api, Gateway, Web, test projects) and implement the WorkOS authentication flow at the YARP Gateway so users can sign in/out, establish a cookie-based session, and land on an inviting empty-garage dashboard with consistent loading/error states.",
+  "createdAt": "2026-03-22T22:08:04.846Z",
+  "order": 1,
+  "phases": {
+    "domainModeling": true,
+    "apiContract": true
+  },
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Scaffold Aspire solution structure",
+      "type": "backend",
+      "description": "Create the solution structure described in the PRD: gabMileage.AppHost, gabMileage.ServiceDefaults, gabMileage.Api (ASP.NET Core + Marten + Wolverine), gabMileage.Gateway (YARP), gabMileage.Web (TanStack Start), and test projects under tests/. Wire Aspire local orchestration so a developer can run the AppHost and see all resources (Gateway, Api, Web, Postgres, Redis) start with health checks. Establish NodaTime usage conventions: Instant for timestamps, LocalDate for user-facing dates.",
+      "acceptanceCriteria": [
+        "Solution builds locally and AppHost runs with Api, Gateway, Web, Postgres and Redis resources healthy",
+        "Api references Marten + Wolverine packages and is configured to use NodaTime types (Instant/LocalDate)",
+        "Gateway is configured as YARP reverse proxy routing Web→Gateway→Api"
+      ]
+    },
+    {
+      "id": "TASK-002",
+      "title": "ServiceDefaults observability + health checks",
+      "type": "backend",
+      "description": "Implement gabMileage.ServiceDefaults and apply it to Api and Gateway: OpenTelemetry tracing, structured logging defaults, and health checks surfaced in Aspire. Ensure all services expose health endpoints and that Aspire shows them.",
+      "acceptanceCriteria": [
+        "Api and Gateway include ServiceDefaults and expose health checks",
+        "OpenTelemetry tracing is enabled and visible in Aspire for requests through Gateway",
+        "No service starts without passing its basic health check"
+      ]
+    },
+    {
+      "id": "TASK-003",
+      "title": "Marten baseline + UserProvisioned event + UserProfile read model",
+      "type": "backend",
+      "description": "Configure MartenDB with PostgreSQL as the event store. Add the domain event `UserProvisioned { userId, displayName, email, avatarUrl, occurredAt }` and a read model `UserProfile` persisted via a Marten projection. This projection is written/updated during first-login provisioning (performed by the Gateway after successful auth).",
+      "acceptanceCriteria": [
+        "Event store schema is created/migrated on startup in dev",
+        "UserProvisioned event is persisted for first login",
+        "UserProfile read model can be queried by userId and includes displayName/email/avatarUrl/createdAt"
+      ]
+    },
+    {
+      "id": "TASK-004",
+      "title": "Gateway WorkOS auth flow (login/callback/logout)",
+      "type": "backend",
+      "description": "Implement the authentication flow in gabMileage.Gateway per Sprint 01 brief: `GET /api/auth/login` redirects (302) to WorkOS hosted auth, WorkOS callback exchanges authorization code for a JWT, validates it, and sets an HTTP-only secure SameSite=Lax cookie named `gab_session`. Implement transparent refresh-before-expiry on requests; if refresh fails or token invalid, treat as unauthenticated. Implement `POST /api/auth/logout` to clear the cookie and redirect to login. Also implement deep-link return: if user hits a protected URL while unauthenticated, after login they return to the original URL.",
+      "acceptanceCriteria": [
+        "Unauthenticated requests to protected app routes end up at the login screen and preserve a return URL",
+        "After successful WorkOS login, Gateway sets `gab_session` as HttpOnly+Secure+SameSite=Lax cookie",
+        "`POST /api/auth/logout` clears the cookie and subsequent API calls return 401",
+        "Any API request with an invalid/expired session results in a redirect-to-login behavior (frontend)"
+      ]
+    },
+    {
+      "id": "TASK-005",
+      "title": "Api auth context + authorization boundary",
+      "type": "backend",
+      "description": "Ensure the Api has a consistent way to access authenticated `userId` (AuthContext) forwarded from the Gateway. Establish a baseline authorization policy so all garage data is scoped to `userId`. Even before vehicles exist, ensure the `GarageSummary` endpoint returns data only for the current user.",
+      "acceptanceCriteria": [
+        "Api request handlers can access an AuthContext containing userId",
+        "All garage-facing endpoints are protected (401 when unauthenticated)",
+        "Cross-user access attempts are rejected without leaking existence (default to 404 semantics for user-owned resources)"
+      ]
+    },
+    {
+      "id": "TASK-006",
+      "title": "Frontend auth shell + login + empty garage UX",
+      "type": "frontend",
+      "description": "In gabMileage.Web (TanStack Start), implement: (1) a login page with a single \"Sign in\" button that initiates the WorkOS flow via the Gateway, (2) an authenticated navigation shell (top bar with wordmark left, avatar+name right), (3) an auth-redirect loading screen (\"Signing you in…\"), and (4) the empty garage dashboard state with warm illustration, heading, subtext, and \"+ Add Vehicle\" CTA (route can be placeholder until Sprint 02). Implement loading skeletons and error states per brief: do not flash empty vs populated state.",
+      "acceptanceCriteria": [
+        "When not signed in, visiting the app shows the login screen with a single \"Sign in\" button",
+        "After sign-in, user lands on the dashboard and sees the empty garage state when no vehicles exist",
+        "Global top bar appears on all authenticated pages and includes user dropdown with \"Sign out\"",
+        "Dashboard load uses skeleton state and never flashes the wrong empty/populated state"
+      ]
+    },
+    {
+      "id": "TASK-007",
+      "title": "E2E smoke: login and empty garage",
+      "type": "both",
+      "description": "Add a Playwright E2E smoke test that exercises: unauthenticated → login screen, perform login via the configured WorkOS test tenant (or mocked/dev auth flow if the repo uses one), land on dashboard, and assert the empty garage state renders. Keep it minimal and stable.",
+      "acceptanceCriteria": [
+        "Playwright test suite includes a smoke test that covers login → dashboard",
+        "Smoke test asserts empty garage heading + CTA renders for a new user",
+        "Test can run locally using the existing Aspire orchestration/dev configuration"
+      ]
+    }
+  ]
+}

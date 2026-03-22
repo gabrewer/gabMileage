@@ -1,0 +1,89 @@
+{
+  "sprint": "garage-vehicles",
+  "description": "Implement the core garage loop: users can add vehicles with a name (and optional make/model/year), see them as a warm card grid on the dashboard, drill into a vehicle detail page with Fuel/Maintenance tabs, and edit the vehicle profile inline — all scoped securely to the authenticated user.",
+  "createdAt": "2026-03-22T22:08:04.846Z",
+  "order": 2,
+  "phases": {
+    "domainModeling": true,
+    "apiContract": true
+  },
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Vehicle aggregate + commands + events",
+      "type": "backend",
+      "description": "Create the Vehicles vertical slice in the Api using Marten event sourcing. Implement commands and domain events from the Sprint 02 brief: `AddVehicleCommand { commandId, name, make, model, year }` → emits `VehicleAdded`, and `UpdateVehicleCommand { vehicleId, name, make, model, year }` → emits `VehicleUpdated`. Store `userId` on events for ownership scoping. Implement server-side idempotency for `AddVehicleCommand` using `commandId` so duplicate submissions are no-ops.",
+      "acceptanceCriteria": [
+        "AddVehicleCommand persists a new event stream and emits VehicleAdded with userId",
+        "Duplicate AddVehicleCommand with the same commandId does not create a second vehicle",
+        "UpdateVehicleCommand emits VehicleUpdated and changes are reflected in the read model"
+      ]
+    },
+    {
+      "id": "TASK-002",
+      "title": "GarageSummary + Vehicle read models via projections",
+      "type": "backend",
+      "description": "Create Marten projections for read models defined in the Sprint 02 contract: `Vehicle` (includes photoUrl/photoThumbnailUrl as null in this sprint) and `GarageSummary { vehicles: Vehicle[] }` sorted by createdAt desc (newest first). Enforce access rules: attempting to access another user’s vehicle must return 404 (not 403) to avoid leaking existence.",
+      "acceptanceCriteria": [
+        "GarageSummary returns vehicles sorted by createdAt desc",
+        "Vehicle read model returns expected shape (including null photo fields)",
+        "Requests for another user’s vehicleId return 404"
+      ]
+    },
+    {
+      "id": "TASK-003",
+      "title": "HTTP API contract for garage + vehicle detail",
+      "type": "both",
+      "description": "Define and implement the HTTP API surface for Sprint 02 (api-developer + backend-builder): endpoints to (1) fetch GarageSummary, (2) add vehicle (accept AddVehicleCommand), (3) fetch a Vehicle by vehicleId for the detail page, and (4) update vehicle (accept UpdateVehicleCommand). Ensure the contract includes error semantics: 401 unauthenticated, 404 for not-found/unauthorized vehicle access, and validation errors for invalid fields.",
+      "acceptanceCriteria": [
+        "Frontend can fetch GarageSummary and vehicle detail using the defined endpoints",
+        "Add vehicle returns the new vehicleId and frontend navigates to the detail page",
+        "Validation errors map to the brief’s messages for name/year constraints"
+      ]
+    },
+    {
+      "id": "TASK-004",
+      "title": "Dashboard garage card grid UI",
+      "type": "frontend",
+      "description": "Implement the dashboard populated state: \"Your Garage\" heading, \"+ Add Vehicle\" button, and a responsive card grid (mobile 1-col, tablet 2-col, desktop 3-col). Cards show name, optional make/model/year subtitle, and an initial-letter colored circle placeholder (color derived deterministically from vehicleId). Cards are ordered most-recently-added first. Include skeleton loading and retry-on-error patterns per brief.",
+      "acceptanceCriteria": [
+        "Dashboard shows skeleton cards while loading and does not flash empty state",
+        "Vehicle cards are ordered newest-first and show initial-letter placeholder",
+        "Clicking a card navigates to the vehicle detail page"
+      ]
+    },
+    {
+      "id": "TASK-005",
+      "title": "Add Vehicle page + validation + success flow",
+      "type": "frontend",
+      "description": "Create the Add Vehicle page as a full page (not modal) with fields and validations from the brief: name required (1–50 trimmed), optional make/model (≤50), optional year (1900–currentYear+1). On save, disable form, show spinner, call AddVehicleCommand endpoint with a client-generated commandId UUID, then navigate to the new vehicle detail page and show toast \"[Name] added to your garage!\". On failure, show inline error banner.",
+      "acceptanceCriteria": [
+        "Submitting with blank/whitespace-only name shows \"Your vehicle needs a name\"",
+        "Successful save navigates to the new vehicle detail page and shows the toast",
+        "Duplicate-clicking submit does not create duplicate vehicles (button disabled + idempotency key)"
+      ]
+    },
+    {
+      "id": "TASK-006",
+      "title": "Vehicle detail header + inline edit + tab scaffold",
+      "type": "frontend",
+      "description": "Implement vehicle detail page: profile header (initial-circle placeholder), name and optional subtitle, inline edit mode (Save/Cancel), and tab bar with \"Fuel\" and \"Maintenance\" tabs rendered in this sprint. Both tabs show the specified empty-state copy and disabled CTAs (enabled in later sprints). Ensure vehicle detail loading skeleton, 404 state (\"doesn't exist or has been removed\" + back link), and retry state are implemented.",
+      "acceptanceCriteria": [
+        "Inline edit saves name/make/model/year and updates the header without navigating away",
+        "Fuel and Maintenance tabs render with placeholder empty states and disabled CTAs",
+        "Navigating to an unknown vehicleId shows the 404 message with back-to-garage link"
+      ]
+    },
+    {
+      "id": "TASK-007",
+      "title": "Tests: vehicle slice (API) + happy-path UI",
+      "type": "both",
+      "description": "Add targeted tests for Sprint 02: backend tests validating add/update, projection sorting, and 404 semantics for cross-user access; plus at least one UI-level automated check (Playwright preferred) that adds a vehicle and verifies the dashboard grid and vehicle detail page render.",
+      "acceptanceCriteria": [
+        "Backend tests cover VehicleAdded/VehicleUpdated and GarageSummary ordering",
+        "Backend test asserts cross-user access returns 404",
+        "Automated UI test covers add vehicle → detail navigation"
+      ]
+    }
+  ]
+}

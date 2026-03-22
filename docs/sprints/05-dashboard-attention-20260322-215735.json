@@ -1,0 +1,78 @@
+{
+  "sprint": "dashboard-attention",
+  "description": "Deliver the v1 dashboard experience: a warm \"Needs Attention\" strip that aggregates overdue and due-soon maintenance across vehicles, attention badge counts on vehicle cards, deep links directly to the relevant maintenance item, and smarter maintenance status via linear interpolation mileage estimation between recent odometer readings.",
+  "createdAt": "2026-03-22T22:08:04.846Z",
+  "order": 5,
+  "phases": {
+    "domainModeling": true,
+    "apiContract": true
+  },
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "EstimatedMileage projection (linear interpolation + caps)",
+      "type": "backend",
+      "description": "Implement the `EstimatedMileage` read model/projection per Sprint 05 algorithm using the two most recent odometer readings from any source (fuel logs or maintenance records). Compute dailyRate, daysSinceLastReading, estimatedOdometer, and apply the cap: do not extrapolate more than one interval’s worth. Handle edge cases: 0 readings (no mileage estimate), 1 reading (use as-is, isEstimate=false), same-day readings (rate=0), negative rate clamps to 0, >6 months since last reading marks confidence=low.",
+      "acceptanceCriteria": [
+        "With two readings, estimatedOdometer follows the algorithm and respects the cap",
+        "With one reading, estimatedOdometer equals that reading and isEstimate=false",
+        "Negative daily rate results in no extrapolation (rate clamped to 0)"
+      ]
+    },
+    {
+      "id": "TASK-002",
+      "title": "Use EstimatedMileage in maintenance status projection",
+      "type": "backend",
+      "description": "Enhance the maintenance status calculation/projection to use `EstimatedMileage` (instead of raw last reading) for mileage-based computations. Ensure display conventions: estimated values are indicated with a tilde (~) in human-readable status detail strings (e.g., \"Next due in ~2,300 mi\"). When there are 0 odometer readings, suppress mileage-based status entirely and show time-based status only (or appropriate guidance when only mileage interval exists).",
+      "acceptanceCriteria": [
+        "Maintenance status uses estimated mileage when interpolation is available",
+        "Status detail strings include ~ prefix for estimated mileage values",
+        "If 0 odometer readings exist, mileage-based status is suppressed per Sprint 05 edge-case rules"
+      ]
+    },
+    {
+      "id": "TASK-003",
+      "title": "DashboardProjection for DashboardData (strip + vehicle cards)",
+      "type": "backend",
+      "description": "Create/enhance projections to produce `DashboardData { attentionItems, vehicles }` per Sprint 05 contract. Build `AttentionItem` entries from maintenance status read models, excluding OK items, and compute `urgencyScore` for stable sorting. Sort: overdue first (most overdue → least), then dueSoon (soonest → furthest). Build `VehicleCard` entries including `attentionCount` (overdue + dueSoon) and `hasOverdue` (true if any overdue). Exclude archived vehicles entirely (Sprint 06 policy) by filtering on vehicle state when available.",
+      "acceptanceCriteria": [
+        "DashboardData returns attentionItems sorted by urgency and vehicles sorted by createdAt desc",
+        "VehicleCard.attentionCount equals overdue+dueSoon items and hasOverdue reflects any overdue presence",
+        "When there are no attention items, attentionItems is an empty array (frontend hides strip)"
+      ]
+    },
+    {
+      "id": "TASK-004",
+      "title": "Single-call dashboard HTTP API",
+      "type": "both",
+      "description": "Define and implement a single HTTP endpoint that returns `DashboardData` in one call (no separate endpoints per zone). Ensure unauthenticated returns 401 and load failures can be surfaced by the frontend as an inline retry banner.",
+      "acceptanceCriteria": [
+        "Frontend fetches dashboard data with one API call",
+        "Endpoint returns both attentionItems and vehicles",
+        "401 is returned when unauthenticated"
+      ]
+    },
+    {
+      "id": "TASK-005",
+      "title": "Dashboard UI: attention strip + badges + deep link",
+      "type": "frontend",
+      "description": "Implement dashboard UI per Sprint 05: render \"Needs Attention\" strip only when attentionItems.length > 0 (no \"All good\" state). Use warm amber strip background; individual overdue badges are red, dueSoon amber. Show up to 6 cards with \"See all (N)\" toggle to expand/collapse client-side. Mobile: horizontal scroll with scroll-snap; Desktop: wrapped grid. Vehicle cards show badge count (red if any overdue else amber if only dueSoon; hidden if 0). Implement deep link: tapping an attention card navigates to the vehicle detail page, selects Maintenance tab, auto-expands the relevant item, and scrolls it into view if needed.",
+      "acceptanceCriteria": [
+        "Attention strip is completely hidden when there are no attention items",
+        "See all / Show less toggles without additional API calls",
+        "Tapping an attention item deep-links to the correct vehicle maintenance tab and expands the targeted item"
+      ]
+    },
+    {
+      "id": "TASK-006",
+      "title": "Tests: estimation + dashboard behavior",
+      "type": "both",
+      "description": "Add tests for Sprint 05: backend tests for EstimatedMileage edge cases and attention sorting; frontend tests for strip hide/show and see-all toggle; and at least one Playwright E2E that seeds a dueSoon/overdue item and verifies the strip renders and deep linking works.",
+      "acceptanceCriteria": [
+        "Backend tests cover cap behavior and 0/1/2 reading scenarios",
+        "Frontend test asserts strip hidden when attentionItems is empty",
+        "Playwright test covers clicking an attention card and landing on expanded maintenance item"
+      ]
+    }
+  ]
+}

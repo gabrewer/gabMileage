@@ -1,0 +1,100 @@
+{
+  "sprint": "lifecycle-photos-polish",
+  "description": "Complete v1 by adding vehicle lifecycle management (archive/restore/permanent delete with safety friction), personal vehicle photos (upload/remove with server-side processing and privacy safeguards), and a responsive polish pass across all screens to ensure gabMileage feels warm, fast, and consistent on mobile, tablet, and desktop.",
+  "createdAt": "2026-03-22T22:08:04.846Z",
+  "order": 6,
+  "phases": {
+    "domainModeling": true,
+    "apiContract": true
+  },
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Vehicle lifecycle commands + events (archive/restore/delete)",
+      "type": "backend",
+      "description": "Extend the Vehicles slice with lifecycle events and commands per Sprint 06: `ArchiveVehicleCommand` → `VehicleArchived`, `RestoreVehicleCommand` → `VehicleRestored`, and `DeleteVehicleCommand { vehicleId, confirmationName }` → `VehicleDeleted`. Enforce policy: active vehicles cannot be permanently deleted; user must archive first, then delete from archived list. Deletion must be hard/unrecoverable by deleting/marking the event stream deleted in Marten. Require type-to-confirm (confirmationName case-insensitive match) only when the vehicle `hasData` (any fuel logs or maintenance records).",
+      "acceptanceCriteria": [
+        "Active vehicle cannot be permanently deleted (must be archived first)",
+        "Archived vehicle delete removes the vehicle and all related data from read models",
+        "Type-to-confirm is required only when hasData=true and matches case-insensitively"
+      ]
+    },
+    {
+      "id": "TASK-002",
+      "title": "Projections: archived list + exclude archived from dashboard/badges",
+      "type": "backend",
+      "description": "Update projections/read models per Sprint 06: `GarageSummary` now returns `vehicles` (active only) plus `archivedVehicles` list sorted by archivedAt desc. Each `ArchivedVehicle` includes `hasData`. Ensure DashboardData attention strip and vehicle card badges exclude archived vehicles entirely. When restoring, vehicle returns to active list (newest position) and projections recalculate (attention items may reappear).",
+      "acceptanceCriteria": [
+        "Archived vehicles do not appear in active garage grid, attention strip, or badge counts",
+        "GarageSummary includes archivedVehicles with archivedAt and hasData",
+        "Restoring a vehicle returns it to the active list and recalculates attention/badges"
+      ]
+    },
+    {
+      "id": "TASK-003",
+      "title": "HTTP API contract: archive/restore/delete + archived access rules",
+      "type": "both",
+      "description": "Define and implement HTTP endpoints for archive, restore, and permanent delete (api-developer + backend-builder). Enforce the access rule: archived vehicles cannot be viewed in detail in v1 (detail page only for active vehicles), so vehicle detail fetch for an archived vehicle should return 404. Ensure standard auth semantics (401 unauthenticated, 404 for cross-user).",
+      "acceptanceCriteria": [
+        "Frontend can archive/restore/delete via the defined endpoints",
+        "Fetching vehicle detail for an archived vehicle returns 404",
+        "Cross-user access attempts return 404"
+      ]
+    },
+    {
+      "id": "TASK-004",
+      "title": "Backend photo upload: blob storage + processing + privacy",
+      "type": "backend",
+      "description": "Implement vehicle photo upload per Sprint 06: `POST /api/vehicles/{vehicleId}/photo` multipart upload, validate max 5MB and formats JPEG/PNG/WebP. Server-side processing must: center-crop to 16:9, resize to thumbnail (400×225) and full (1200×675), strip EXIF (privacy), and DO NOT store the original file after processing. Store outputs in Azure Blob Storage and update the vehicle read model with `photoUrl` and `photoThumbnailUrl`. Implement remove photo command/event (`VehiclePhotoRemoved`) and set photo URLs to null.",
+      "acceptanceCriteria": [
+        "Uploading a valid image returns photoUrl + photoThumbnailUrl and vehicle shows new URLs",
+        "EXIF metadata is stripped and original is not stored",
+        "Removing a photo sets photo URLs to null and emits VehiclePhotoRemoved"
+      ]
+    },
+    {
+      "id": "TASK-005",
+      "title": "Frontend UI: archive menu + archived section + delete dialogs",
+      "type": "frontend",
+      "description": "Implement Sprint 06 lifecycle UI: Vehicle detail overflow \"⋯\" menu with \"Archive Vehicle\" and confirmation dialog (non-destructive tone). Dashboard gains collapsed \"Archived Vehicles (N)\" section (hidden when none) that expands to a list with Restore (no confirmation) and Delete (red text) actions. Delete dialog: for hasData=true require type-to-confirm vehicle name; for hasData=false simple confirm. Archived vehicles are not navigable to detail in v1.",
+      "acceptanceCriteria": [
+        "Archiving navigates back to dashboard and the vehicle disappears from active grid",
+        "Archived Vehicles section is hidden when empty and collapsed by default when present",
+        "Delete Forever is disabled until correct name is typed when hasData=true"
+      ]
+    },
+    {
+      "id": "TASK-006",
+      "title": "Frontend UI: vehicle photos (upload/remove) + progress overlay",
+      "type": "frontend",
+      "description": "Implement Sprint 06 photo UX: vehicle detail header shows 16:9 image (object-fit: cover) or initial-letter placeholder; camera icon opens action menu (Upload Photo; Remove Photo only when photo exists). Client-side validate type and size before upload; show progress overlay while uploading; show toast on success/failure; do not optimistic-render new photo until upload completes. Garage cards use photoThumbnailUrl when present.",
+      "acceptanceCriteria": [
+        "Client rejects >5MB or wrong file types with the specified toasts",
+        "Successful upload updates the header photo and garage card thumbnail",
+        "Remove Photo immediately returns to placeholder and shows \"Photo removed\" toast"
+      ]
+    },
+    {
+      "id": "TASK-007",
+      "title": "Responsive polish + consistency pass",
+      "type": "both",
+      "description": "Execute the Sprint 06 responsive polish checklist across all screens: forms full-width on mobile, primary buttons full-width, attention strip is the only horizontal scroll, touch targets ≥44×44, consistent skeletons/errors/empty states, date/odometer/currency formatting, toasts positioning (mobile bottom-center, desktop bottom-right, max 1 at a time), and tilde (~) for estimated mileage. Fix any layout regressions introduced by photos/archived section.",
+      "acceptanceCriteria": [
+        "No horizontal scroll exists on any page except the attention strip",
+        "All screens meet the specified mobile/tablet/desktop layout constraints",
+        "Formatting conventions (date, odometer, currency, tilde estimates) are consistent across the app"
+      ]
+    },
+    {
+      "id": "TASK-008",
+      "title": "Tests: lifecycle + photo endpoints + key UI flows",
+      "type": "both",
+      "description": "Add tests for Sprint 06: backend integration tests for archive/restore/delete and projection effects (active vs archived, attention exclusion), plus backend tests for photo upload validation (size/type) and remove photo behavior. Add a Playwright flow that archives a vehicle, restores it, and (optionally) uploads/removes a photo using test fixtures.",
+      "acceptanceCriteria": [
+        "Backend tests assert archived vehicles are excluded from dashboard attention and badge calculations",
+        "Backend tests assert photo upload rejects invalid size/type and remove photo clears URLs",
+        "Automated UI test covers archive → restore and validates dashboard updates"
+      ]
+    }
+  ]
+}
