@@ -14,6 +14,9 @@ using gabMileage.Api.Garage.FuelLogs.Handlers;
 using gabMileage.Api.Garage.FuelLogs.Projections;
 using gabMileage.Api.Garage.FuelLogs.ReadModels;
 using gabMileage.Api.Garage.FuelLogs.DomainEvents;
+using gabMileage.Api.Garage.Maintenance.DomainEvents;
+using gabMileage.Api.Garage.Maintenance.Projections;
+using gabMileage.Api.Garage.Maintenance.ReadModels;
 using gabMileage.Api.Users;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
@@ -113,10 +116,18 @@ var marten = builder.Services.AddMarten(options =>
     options.Events.AddEventType<FuelLogUpdated>();
     options.Events.AddEventType<FuelLogDeleted>();
 
+    options.Events.AddEventType<MaintenanceItemDefined>();
+    options.Events.AddEventType<MaintenanceItemUpdated>();
+    options.Events.AddEventType<MaintenanceItemRemoved>();
+    options.Events.AddEventType<MaintenancePerformed>();
+    options.Events.AddEventType<MaintenanceRecordUpdated>();
+    options.Events.AddEventType<MaintenanceRecordDeleted>();
+
     // Inline projections: read-after-write consistency for query-side models.
     options.Projections.Add<UserProfileProjection>(ProjectionLifecycle.Inline);
     options.Projections.Add<VehicleProjection>(ProjectionLifecycle.Inline);
     options.Projections.Add<FuelLogListProjection>(ProjectionLifecycle.Inline);
+    options.Projections.Add<MaintenanceTabProjection>(ProjectionLifecycle.Inline);
 
     // GarageSummary is a per-user read model updated from vehicle events.
     // Breadcrumbs (backend-builder)
@@ -140,6 +151,12 @@ var marten = builder.Services.AddMarten(options =>
         .Index(x => x.UserId);
 
     options.Schema.For<FuelLogList>()
+        .Identity(x => x.Id)
+        .Index(x => x.VehicleId)
+        .Index(x => x.UserId)
+        .Index(x => new { x.UserId, x.VehicleId });
+
+    options.Schema.For<MaintenanceTabData>()
         .Identity(x => x.Id)
         .Index(x => x.VehicleId)
         .Index(x => x.UserId)
