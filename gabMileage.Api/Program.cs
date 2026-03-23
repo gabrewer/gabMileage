@@ -440,6 +440,13 @@ app.MapPut("/api/v1/garage/vehicles/{vehicleId}/fuel-logs/{fuelLogId}", async (
     if (fuelLogId == Guid.Empty)
         return Results.ValidationProblem(new Dictionary<string, string[]> { ["fuelLogId"] = ["FuelLogId is required."] });
 
+    // Contract: body may include vehicleId/fuelLogId. If present, it must match the route.
+    if (request.VehicleId is not null && request.VehicleId.Value != vehicleId)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId in body must match route."] });
+
+    if (request.FuelLogId is not null && request.FuelLogId.Value != fuelLogId)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["fuelLogId"] = ["FuelLogId in body must match route."] });
+
     try
     {
         await UpdateFuelLogHandler.Handle(new UpdateFuelLogCommand(
@@ -523,6 +530,199 @@ app.MapDelete("/api/v1/garage/vehicles/{vehicleId}/fuel-logs/{fuelLogId}", async
 .RequireAuthorization()
 .WithName("DeleteFuelLog");
 
+// Compatibility alias routes (non-canonical) — see docs/api/fuel-logging.md §3.
+// Breadcrumbs (backend-builder)
+// Who: backend-builder
+// What: Map /api/v1/vehicles/* fuel-log endpoints as strict aliases of /api/v1/garage/vehicles/*.
+// Why: Early Sprint 03 frontend drafts used the shorter path; tests enforce the alias strings exist.
+// Alternatives considered: Redirects (rejected: breaks some clients and changes semantics); removing canonical route (rejected: contract says canonical is under /garage).
+// Confidence: high
+app.MapGet("/api/v1/vehicles/{vehicleId}/fuel-logs", async (
+    Guid vehicleId,
+    AuthContext authContext,
+    IQuerySession session,
+    CancellationToken ct) =>
+{
+    if (vehicleId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId is required."] });
+
+    var vehicle = await session.LoadAsync<VehicleReadModel>(VehicleStreamId.From(vehicleId), ct);
+    if (vehicle is null || !string.Equals(vehicle.UserId, authContext.UserId, StringComparison.Ordinal))
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Vehicle {vehicleId:D} not found.");
+
+    var list = await session.LoadAsync<FuelLogList>(FuelLogListId.From(vehicleId), ct);
+
+    var logs = (list?.Logs ?? new List<FuelLogEntry>())
+        .Select(l => new FuelLogItem(
+            l.FuelLogId,
+            l.Date,
+            l.Odometer,
+            l.Gallons,
+            l.TotalCost,
+            l.PricePerGallon,
+            l.CalculatedField,
+            l.IsPartialFillUp,
+            l.Notes,
+            l.Mpg,
+            l.CreatedAt))
+        .ToArray();
+
+    return Results.Ok(new FuelLogListResponse(vehicleId, logs, list?.LastOdometer));
+})
+.RequireAuthorization();
+
+app.MapPost("/api/v1/vehicles/{vehicleId}/fuel-logs", async (
+    Guid vehicleId,
+    RecordFuelLogRequest request,
+    AuthContext authContext,
+    IDocumentSession session,
+    IClock clock,
+    CancellationToken ct) =>
+{
+    if (vehicleId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId is required."] });
+
+    try
+    {
+        var result = await RecordFuelLogHandler.Handle(new RecordFuelLogCommand(
+            request.CommandId,
+            vehicleId,
+            request.Date,
+            request.Odometer,
+            request.Gallons,
+            request.TotalCost,
+            request.PricePerGallon,
+            request.CalculatedField,
+            request.IsPartialFillUp,
+            request.Notes), authContext, session, clock, ct);
+
+        var response = new FuelLogCreateResponse(result.FuelLogId, result.OdometerWarning);
+
+        return result.IsDuplicate
+            ? Results.Ok(response)
+            : Results.Created($"/api/v1/vehicles/{vehicleId:D}/fuel-logs/{result.FuelLogId:D}", response);
+    }
+    catch (FuelLogValidationException vex)
+    {
+        return Results.ValidationProblem(vex.Errors);
+    }
+    catch (VehicleNotFoundException)
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Vehicle {vehicleId:D} not found.");
+    }
+})
+.RequireAuthorization();
+
+app.MapPut("/api/v1/vehicles/{vehicleId}/fuel-logs/{fuelLogId}", async (
+    Guid vehicleId,
+    Guid fuelLogId,
+    UpdateFuelLogRequest request,
+    AuthContext authContext,
+    IDocumentSession session,
+    IClock clock,
+    CancellationToken ct) =>
+{
+    if (vehicleId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId is required."] });
+
+    if (fuelLogId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["fuelLogId"] = ["FuelLogId is required."] });
+
+    if (request.VehicleId is not null && request.VehicleId.Value != vehicleId)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId in body must match route."] });
+
+    if (request.FuelLogId is not null && request.FuelLogId.Value != fuelLogId)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["fuelLogId"] = ["FuelLogId in body must match route."] });
+
+    try
+    {
+        await UpdateFuelLogHandler.Handle(new UpdateFuelLogCommand(
+            fuelLogId,
+            vehicleId,
+            request.Date,
+            request.Odometer,
+            request.Gallons,
+            request.TotalCost,
+            request.PricePerGallon,
+            request.CalculatedField,
+            request.IsPartialFillUp,
+            request.Notes), authContext, session, clock, ct);
+
+        return Results.Ok(new FuelLogIdResponse(fuelLogId));
+    }
+    catch (FuelLogValidationException vex)
+    {
+        return Results.ValidationProblem(vex.Errors);
+    }
+    catch (VehicleNotFoundException)
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Vehicle {vehicleId:D} not found.");
+    }
+    catch (FuelLogNotFoundException)
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Fuel log {fuelLogId:D} not found.");
+    }
+})
+.RequireAuthorization();
+
+app.MapDelete("/api/v1/vehicles/{vehicleId}/fuel-logs/{fuelLogId}", async (
+    Guid vehicleId,
+    Guid fuelLogId,
+    AuthContext authContext,
+    IDocumentSession session,
+    IClock clock,
+    CancellationToken ct) =>
+{
+    if (vehicleId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId is required."] });
+
+    if (fuelLogId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["fuelLogId"] = ["FuelLogId is required."] });
+
+    try
+    {
+        await DeleteFuelLogHandler.Handle(new DeleteFuelLogCommand(fuelLogId, vehicleId), authContext, session, clock, ct);
+        return Results.NoContent();
+    }
+    catch (FuelLogValidationException vex)
+    {
+        return Results.ValidationProblem(vex.Errors);
+    }
+    catch (VehicleNotFoundException)
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Vehicle {vehicleId:D} not found.");
+    }
+    catch (FuelLogNotFoundException)
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Fuel log {fuelLogId:D} not found.");
+    }
+})
+.RequireAuthorization();
+
 // Explicit health endpoints (tests assert these exact strings exist in this project).
 app.MapHealthChecks("/health");
 app.MapHealthChecks("/alive", new HealthCheckOptions
@@ -583,6 +783,8 @@ internal sealed record RecordFuelLogRequest(
     string? Notes);
 
 internal sealed record UpdateFuelLogRequest(
+    Guid? VehicleId,
+    Guid? FuelLogId,
     LocalDate Date,
     int Odometer,
     decimal? Gallons,
