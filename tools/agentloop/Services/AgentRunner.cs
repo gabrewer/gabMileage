@@ -106,13 +106,13 @@ public static class AgentRunner
         // Per-agent timeout — kills the process if it hangs with no completion
         var timeoutMinutes = agent switch
         {
-            "test-writer"   => 20,
-            "backend-builder" or "frontend-builder" => 30,
-            "destroyer"     => 15,
-            "review-agent"  => 15,
-            _               => 20,
+            "test-writer"      => 20,
+            "backend-builder"  => 45,
+            "frontend-builder" => 45,
+            "destroyer"        => 15,
+            "review-agent"     => 15,
+            _                  => 20,
         };
-        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(timeoutMinutes));
 
         // Read stderr concurrently to prevent buffer-full deadlock
         var stderrTask = proc.StandardError.ReadToEndAsync();
@@ -124,56 +124,64 @@ public static class AgentRunner
         var logStream = new FileStream(logPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
         await using var logWriter = new StreamWriter(logStream) { AutoFlush = true };
 
-        try
-        {
-            // Stream stdout line by line
-            while (await proc.StandardOutput.ReadLineAsync(cts.Token) is { } line)
-            {
-                await logWriter.WriteLineAsync(line);
-                bytesWritten += line.Length + 1;
-                display.BytesWritten = bytesWritten;
-
-                if (string.IsNullOrWhiteSpace(line)) continue;
-
-                try
-                {
-                    using var doc = JsonDocument.Parse(line);
-                    var root = doc.RootElement;
-
-                    var status = ExtractStatus(root);
-                    if (status is not null) display.Status = status;
-
-                    if (root.TryGetProperty("type", out var typeProp))
-                    {
-                        var eventType = typeProp.GetString();
-
-                        // Track the last assistant message content as the result text
-                        if (eventType == "assistant.message" &&
-                            root.TryGetProperty("data", out var msgData) &&
-                            msgData.TryGetProperty("content", out var contentProp))
-                        {
-                            var content = contentProp.GetString() ?? "";
-                            if (!string.IsNullOrEmpty(content))
-                                resultText = content;
-                        }
-
-                        // Final result event — capture exit code
-                        if (eventType == "result" &&
-                            root.TryGetProperty("exitCode", out var exitProp))
-                        {
-                            exitCode = exitProp.GetInt32();
-                        }
-                    }
-                }
-                catch (JsonException) { /* partial line */ }
-            }
-        }
-        catch (OperationCanceledException)
+        // Windows process stdout pipes do not reliably honour CancellationToken on ReadLineAsync.
+        // Use a Timer instead: when it fires, kill the process so the pipe closes and the
+        // read loop exits naturally (ReadLineAsync returns null at EOF).
+        using var timeoutTimer = new System.Threading.Timer(_ =>
         {
             timedOut = true;
-            await logWriter.WriteLineAsync($"\n--- TIMEOUT: agent exceeded {timeoutMinutes} minute limit, process killed ---");
-            display.Status = $"TIMED OUT after {timeoutMinutes}m";
+            display.Status = $"TIMED OUT after {timeoutMinutes}m — killing";
             try { proc.Kill(entireProcessTree: true); } catch { /* best effort */ }
+        }, null, TimeSpan.FromMinutes(timeoutMinutes), Timeout.InfiniteTimeSpan);
+
+        // Stream stdout line by line — no CancellationToken; the timer handles termination
+        while (await proc.StandardOutput.ReadLineAsync() is { } line)
+        {
+            await logWriter.WriteLineAsync(line);
+            bytesWritten += line.Length + 1;
+            display.BytesWritten = bytesWritten;
+
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            try
+            {
+                using var doc = JsonDocument.Parse(line);
+                var root = doc.RootElement;
+
+                var status = ExtractStatus(root);
+                if (status is not null) display.Status = status;
+
+                if (root.TryGetProperty("type", out var typeProp))
+                {
+                    var eventType = typeProp.GetString();
+
+                    // Track the last assistant message content as the result text
+                    if (eventType == "assistant.message" &&
+                        root.TryGetProperty("data", out var msgData) &&
+                        msgData.TryGetProperty("content", out var contentProp))
+                    {
+                        var content = contentProp.GetString() ?? "";
+                        if (!string.IsNullOrEmpty(content))
+                            resultText = content;
+                    }
+
+                    // Final result event — capture exit code
+                    if (eventType == "result" &&
+                        root.TryGetProperty("exitCode", out var exitProp))
+                    {
+                        exitCode = exitProp.GetInt32();
+                    }
+                }
+            }
+            catch (JsonException) { /* partial line */ }
+        }
+
+        // Disarm the timer — process finished before timeout
+        timeoutTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+
+        if (timedOut)
+        {
+            await logWriter.WriteLineAsync($"\n--- TIMEOUT: agent exceeded {timeoutMinutes} minute limit, process killed ---");
         }
 
         var stderrText = "";
