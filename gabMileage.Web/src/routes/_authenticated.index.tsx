@@ -229,13 +229,15 @@ function DashboardBody({
   const sorted = [...vehicles].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 
   return (
+    // Breadcrumbs:
+    // - Who: frontend-builder
+    // - What: Garage card grid uses explicit responsive 1/2/3 columns via Tailwind classes
+    // - Why: Enforces TASK-004 layout contract (no auto-fit/auto-fill) and yields predictable tablet/desktop density
+    // - Alternatives considered: inline gridTemplateColumns with auto-fit; JS/ResizeObserver-driven columns
+    // - Confidence: high
     <section
       data-testid="garage-vehicle-list"
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-        gap: 12,
-      }}
+      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
     >
       {sorted.map((v) => {
         const subtitle = [v.make, v.model, v.year?.toString()]
