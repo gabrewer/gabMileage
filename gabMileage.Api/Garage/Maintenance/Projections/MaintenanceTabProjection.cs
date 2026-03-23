@@ -92,9 +92,8 @@ public sealed class MaintenanceTabProjection : MultiStreamProjection<Maintenance
                 .ThenByDescending(r => r.Odometer)
                 .ToList();
 
-            item.LastPerformedDate = item.Records.Count > 0 ? item.Records[0].Date : item.LastPerformedDate;
-            item.LastPerformedOdometer = item.Records.Count > 0 ? item.Records[0].Odometer : item.LastPerformedOdometer;
-
+            // Keep LastPerformed* as the initial baseline seeded on item creation.
+            // Effective "last performed" is derived from Records at query time.
             RecalculateLastOdometer(data);
             return data;
         });
@@ -115,9 +114,6 @@ public sealed class MaintenanceTabProjection : MultiStreamProjection<Maintenance
                 .ThenByDescending(r => r.Odometer)
                 .ToList();
 
-            item.LastPerformedDate = item.Records.Count > 0 ? item.Records[0].Date : item.LastPerformedDate;
-            item.LastPerformedOdometer = item.Records.Count > 0 ? item.Records[0].Odometer : item.LastPerformedOdometer;
-
             RecalculateLastOdometer(data);
             return data;
         });
@@ -135,9 +131,8 @@ public sealed class MaintenanceTabProjection : MultiStreamProjection<Maintenance
                 .ThenByDescending(r => r.Odometer)
                 .ToList();
 
-            item.LastPerformedDate = item.Records.Count > 0 ? item.Records[0].Date : item.LastPerformedDate;
-            item.LastPerformedOdometer = item.Records.Count > 0 ? item.Records[0].Odometer : item.LastPerformedOdometer;
-
+            // Keep LastPerformed* as the initial baseline seeded on item creation.
+            // Effective "last performed" is derived from Records at query time.
             RecalculateLastOdometer(data);
             return data;
         });
