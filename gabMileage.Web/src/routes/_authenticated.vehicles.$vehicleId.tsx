@@ -15,9 +15,15 @@ import {
   type VehicleResponse,
   updateVehicle,
 } from '../api/garage'
-import { getFuelLogs, type FuelLog, type FuelLogList } from '../api/fuelLogs'
+import {
+  deleteFuelLog,
+  getFuelLogs,
+  type FuelLog,
+  type FuelLogList,
+} from '../api/fuelLogs'
 import { isUnauthorized } from '../api/me'
 import { useToast } from '../components/Toast'
+
 import { returnToFromHref } from '../lib/returnTo'
 import {
   vehicleAvatarColor,
@@ -101,13 +107,15 @@ export const Route = createFileRoute('/_authenticated/vehicles/$vehicleId')({
 
 function VehicleDetailRoute() {
   const data = Route.useLoaderData()
+  const { vehicleId } = Route.useParams()
   const pathname = useRouterState({
     select: (s) => s.location.pathname,
   })
 
-  // This route has child routes (e.g. /fuel/log). If we're on a child path, render the child
-  // route component instead of showing the vehicle detail page underneath it.
-  if (pathname.endsWith('/fuel/log')) {
+  // This route has child routes (e.g. /fuel/log, /fuel/:fuelLogId/edit).
+  // If we're on a child path, render the child route component instead of showing the vehicle
+  // detail page underneath it.
+  if (pathname.includes(`/vehicles/${vehicleId}/fuel/`)) {
     return <Outlet />
   }
 
@@ -585,6 +593,16 @@ function FuelTab({
   disabled,
 }: Readonly<{ vehicleId: string; fuelLogs: FuelLog[] | null; disabled: boolean }>) {
   const navigate = useNavigate()
+  const toast = useToast()
+
+  const [logs, setLogs] = React.useState<FuelLog[]>(() => fuelLogs ?? [])
+  const [confirmDelete, setConfirmDelete] = React.useState<FuelLog | null>(null)
+  const [deleting, setDeleting] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!fuelLogs) return
+    setLogs(fuelLogs)
+  }, [fuelLogs])
 
   const onLogFillUp = () =>
     void navigate({
@@ -592,25 +610,87 @@ function FuelTab({
       params: { vehicleId },
     })
 
+  const refreshFuelLogs = React.useCallback(async () => {
+    try {
+      const next = await getFuelLogs(vehicleId)
+      setLogs(next.logs ?? [])
+    } catch {
+      // Keep the existing list; errors render via other surfaces in this app.
+    }
+  }, [vehicleId])
+
+  // If an edit route saved while this tab was unmounted, it will mark fuel logs as dirty.
+  // Refresh once on mount so sort + MPG badges reflect server recalculation.
+  React.useEffect(() => {
+    const key = `gabMileage:fuelLogsDirty:${vehicleId}`
+    try {
+      if (window.sessionStorage.getItem(key) === '1') {
+        window.sessionStorage.removeItem(key)
+        void refreshFuelLogs()
+      }
+    } catch {
+      // Ignore; event-driven refresh below can still update the list.
+    }
+  }, [refreshFuelLogs, vehicleId])
+
+  // Allow child routes (edit page) to trigger a refresh after save.
+  React.useEffect(() => {
+    const onChanged = (e: Event) => {
+      const ce = e as CustomEvent<{ vehicleId?: string }>
+      if (!ce.detail?.vehicleId || ce.detail.vehicleId !== vehicleId) return
+      void refreshFuelLogs()
+    }
+
+    window.addEventListener('gabMileage:fuelLogsChanged', onChanged)
+    return () => window.removeEventListener('gabMileage:fuelLogsChanged', onChanged)
+  }, [refreshFuelLogs, vehicleId])
+
+  const onEdit = (fuelLogId: string) => {
+    if (disabled) return
+    void navigate({
+      to: '/vehicles/$vehicleId/fuel/$fuelLogId/edit',
+      params: { vehicleId, fuelLogId },
+    })
+  }
+
+  const onDelete = (log: FuelLog) => {
+    if (disabled) return
+    setConfirmDelete(log)
+  }
+
+  const onConfirmDelete = async () => {
+    if (!confirmDelete) return
+
+    setDeleting(true)
+    try {
+      await deleteFuelLog(vehicleId, confirmDelete.fuelLogId)
+      await refreshFuelLogs()
+      toast.push('Fill-up deleted')
+    } finally {
+      setDeleting(false)
+      setConfirmDelete(null)
+    }
+  }
+
   // If the fuel list is unavailable (e.g., unit test doesn’t stub it), keep the original
   // placeholder with a disabled CTA.
   if (!fuelLogs) {
     return <FuelPlaceholder />
   }
 
-  if (fuelLogs.length === 0) {
+  if (logs.length === 0) {
     return <FuelLoadedEmpty disabled={disabled} onLogFillUp={onLogFillUp} />
   }
 
   // Breadcrumbs (frontend-builder)
-  // What: Sort newest-first (date desc, tie-breaker createdAt desc) before rendering.
-  // Why: Sprint 03 requires reverse-chronological; Vitest asserts newest appears first.
-  // Alternatives considered: sorting server-side only (rejected: loader/test stubs may be unsorted).
+  // What: Sort newest-first (date desc, tie-breaker odometer desc) before rendering.
+  // Why: Contract requires same-date ties to prefer higher odometer; Vitest asserts this.
+  // Alternatives considered: tie-breaker createdAt (rejected: can reorder edits/deletes incorrectly).
   // Confidence: high
-  const sortedFuelLogs = [...fuelLogs].sort((a, b) => {
+  const sortedFuelLogs = [...logs].sort((a, b) => {
     const byDate = b.date.localeCompare(a.date)
     if (byDate !== 0) return byDate
-    return b.createdAt.localeCompare(a.createdAt)
+    return b.odometer - a.odometer
   })
 
   return (
@@ -647,9 +727,24 @@ function FuelTab({
         }}
       >
         {sortedFuelLogs.map((log) => (
-          <FuelLogCard key={log.fuelLogId} log={log} disabled={disabled} />
+          <FuelLogCard
+            key={log.fuelLogId}
+            log={log}
+            disabled={disabled}
+            onEdit={() => onEdit(log.fuelLogId)}
+            onDelete={() => onDelete(log)}
+          />
         ))}
       </section>
+
+      {confirmDelete ? (
+        <ConfirmDeleteDialog
+          dateLabel={formatFuelLogDate(confirmDelete.date)}
+          disabled={deleting}
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={onConfirmDelete}
+        />
+      ) : null}
     </section>
   )
 }
@@ -696,7 +791,14 @@ function FuelLoadedEmpty({
 function FuelLogCard({
   log,
   disabled,
-}: Readonly<{ log: FuelLog; disabled: boolean }>) {
+  onEdit,
+  onDelete,
+}: Readonly<{
+  log: FuelLog
+  disabled: boolean
+  onEdit: () => void
+  onDelete: () => void
+}>) {
   return (
     <article
       style={{
@@ -756,6 +858,7 @@ function FuelLogCard({
             <button
               type="button"
               disabled={disabled}
+              onClick={onEdit}
               style={menuButtonStyle(disabled)}
             >
               Edit
@@ -763,6 +866,7 @@ function FuelLogCard({
             <button
               type="button"
               disabled={disabled}
+              onClick={onDelete}
               style={menuButtonStyle(disabled, true)}
             >
               Delete
@@ -786,6 +890,96 @@ function menuButtonStyle(disabled: boolean, danger?: boolean): React.CSSProperti
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.6 : 1,
   }
+}
+
+// Breadcrumbs (frontend-builder)
+// What: Delete uses a blocking confirmation dialog (modal) instead of an undo toast.
+// Why: Sprint brief explicitly requires confirmation copy; undo toasts are easy to miss on mobile.
+// Alternatives considered: undo toast (rejected by brief), browser confirm() (rejected: inconsistent UX).
+// Confidence: high
+function ConfirmDeleteDialog({
+  dateLabel,
+  disabled,
+  onCancel,
+  onConfirm,
+}: Readonly<{
+  dateLabel: string
+  disabled: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}>) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(17,24,39,0.35)',
+        display: 'grid',
+        placeItems: 'center',
+        padding: 16,
+        zIndex: 60,
+      }}
+    >
+      <div
+        style={{
+          width: 'min(520px, 100%)',
+          borderRadius: 18,
+          border: '1px solid rgba(0,0,0,0.10)',
+          background: 'white',
+          padding: 16,
+          boxShadow: '0 20px 60px rgba(0,0,0,0.20)',
+          display: 'grid',
+          gap: 12,
+        }}
+      >
+        <div style={{ fontWeight: 900, letterSpacing: -0.2 }}>
+          Delete this fill-up from {dateLabel}?
+        </div>
+        <div style={{ opacity: 0.78 }}>
+          This can’t be undone.
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={disabled}
+            style={{
+              border: 0,
+              background: 'transparent',
+              padding: '10px 12px',
+              borderRadius: 12,
+              fontWeight: 850,
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              opacity: disabled ? 0.7 : 1,
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={disabled}
+            style={{
+              padding: '10px 12px',
+              borderRadius: 12,
+              border: 0,
+              background: '#be123c',
+              color: 'white',
+              fontWeight: 900,
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              opacity: disabled ? 0.7 : 1,
+              minWidth: 120,
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function Pill({
