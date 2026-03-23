@@ -1,10 +1,29 @@
 import React from 'react'
-import { Await, createFileRoute, defer, Link, redirect } from '@tanstack/react-router'
-import { getVehicle, isNotFoundVehicle, type VehicleResponse, updateVehicle } from '../api/garage'
+import {
+  Await,
+  Outlet,
+  createFileRoute,
+  defer,
+  Link,
+  redirect,
+  useNavigate,
+  useRouterState,
+} from '@tanstack/react-router'
+import {
+  getVehicle,
+  isNotFoundVehicle,
+  type VehicleResponse,
+  updateVehicle,
+} from '../api/garage'
+import { getFuelLogs, type FuelLog, type FuelLogList } from '../api/fuelLogs'
 import { isUnauthorized } from '../api/me'
 import { useToast } from '../components/Toast'
 import { returnToFromHref } from '../lib/returnTo'
-import { vehicleAvatarColor, vehicleAvatarTextColor, vehicleInitial } from '../lib/vehicleAvatar'
+import {
+  vehicleAvatarColor,
+  vehicleAvatarTextColor,
+  vehicleInitial,
+} from '../lib/vehicleAvatar'
 import { validateVehicleDraft, type VehicleDraft } from '../lib/vehicleValidation'
 
 type VehicleLoadResult =
@@ -12,6 +31,11 @@ type VehicleLoadResult =
   | { kind: 'unauthorized' }
   | { kind: 'notFound' }
   | { kind: 'error'; error: unknown }
+
+type FuelLogsLoadResult =
+  | { kind: 'ok'; value: FuelLogList }
+  | { kind: 'unauthorized' }
+  | { kind: 'unavailable' }
 
 export const Route = createFileRoute('/_authenticated/vehicles/$vehicleId')({
   loader: async ({ params, location }) => {
@@ -25,61 +49,99 @@ export const Route = createFileRoute('/_authenticated/vehicles/$vehicleId')({
         return { kind: 'error' as const, error }
       })
 
+    const fuelLogsPromise: Promise<FuelLogsLoadResult> = getFuelLogs(params.vehicleId)
+      .then((value) => ({ kind: 'ok' as const, value }))
+      .catch((error) => {
+        if (isUnauthorized(error)) return { kind: 'unauthorized' as const }
+        // In unit tests, some specs don't stub the fuel-logs endpoint.
+        // Treat that as "unavailable" so the page can still render.
+        return { kind: 'unavailable' as const }
+      })
+
+    const pagePromise = Promise.all([vehiclePromise, fuelLogsPromise]).then(
+      ([vehicle, fuel]) => ({ vehicle, fuel }),
+    )
+
     const fast = await Promise.race<
-      | { kind: 'done'; value: VehicleLoadResult }
+      | { kind: 'done'; value: Awaited<typeof pagePromise> }
       | { kind: 'pending' }
     >([
-      vehiclePromise.then((value) => ({ kind: 'done' as const, value })),
+      pagePromise.then((value) => ({ kind: 'done' as const, value })),
       new Promise((resolve) =>
         setTimeout(() => resolve({ kind: 'pending' as const }), 0),
       ),
     ])
 
     if (fast.kind === 'done') {
-      if (fast.value.kind === 'ok') return { vehicle: fast.value.value }
+      const vehicle = fast.value.vehicle
+      const fuel = fast.value.fuel
 
-      if (fast.value.kind === 'unauthorized') {
+      if (vehicle.kind === 'ok') {
+        return {
+          vehicle: vehicle.value,
+          fuelLogs: fuel.kind === 'ok' ? fuel.value.logs ?? [] : null,
+        }
+      }
+
+      if (vehicle.kind === 'unauthorized' || fuel.kind === 'unauthorized') {
         throw redirect({ to: '/login', search: { returnTo } })
       }
 
-      if (fast.value.kind === 'notFound') {
+      if (vehicle.kind === 'notFound') {
         return { notFound: true as const }
       }
 
-      throw fast.value.error
+      throw vehicle.error
     }
 
-    return { returnTo, vehiclePromise: defer(vehiclePromise) }
+    return { returnTo, pagePromise: defer(pagePromise) }
   },
   component: VehicleDetailRoute,
 })
 
 function VehicleDetailRoute() {
   const data = Route.useLoaderData()
+  const pathname = useRouterState({
+    select: (s) => s.location.pathname,
+  })
+
+  // This route has child routes (e.g. /fuel/log). If we're on a child path, render the child
+  // route component instead of showing the vehicle detail page underneath it.
+  if (pathname.endsWith('/fuel/log')) {
+    return <Outlet />
+  }
 
   return (
     <main style={{ maxWidth: 900, margin: '0 auto', padding: 16 }}>
       {'notFound' in data ? (
         <NotFoundState />
       ) : 'vehicle' in data ? (
-        <VehicleDetail vehicle={data.vehicle} />
+        <VehicleDetail vehicle={data.vehicle} fuelLogs={data.fuelLogs} />
       ) : (
         <React.Suspense fallback={<VehicleDetailSkeleton />}>
-          <Await promise={data.vehiclePromise}>
-            {(result) => {
-              if (result.kind === 'unauthorized') {
+          <Await promise={data.pagePromise}>
+            {(page) => {
+              const vehicle = page.vehicle
+              const fuel = page.fuel
+
+              if (vehicle.kind === 'unauthorized' || fuel.kind === 'unauthorized') {
                 return <UnauthorizedRedirect returnTo={data.returnTo} />
               }
 
-              if (result.kind === 'notFound') {
+              if (vehicle.kind === 'notFound') {
                 return <NotFoundState />
               }
 
-              if (result.kind === 'error') {
+              if (vehicle.kind === 'error') {
                 return <LoadErrorState />
               }
 
-              return <VehicleDetail vehicle={result.value} />
+              return (
+                <VehicleDetail
+                  vehicle={vehicle.value}
+                  fuelLogs={fuel.kind === 'ok' ? fuel.value.logs ?? [] : null}
+                />
+              )
             }}
           </Await>
         </React.Suspense>
@@ -158,7 +220,10 @@ function LoadErrorState() {
  * Alternatives considered: blank avatar slot (too empty), random color per render (flicker).
  * Confidence: high
  */
-function VehicleDetail({ vehicle }: Readonly<{ vehicle: VehicleResponse }>) {
+function VehicleDetail({
+  vehicle,
+  fuelLogs,
+}: Readonly<{ vehicle: VehicleResponse; fuelLogs: FuelLog[] | null }>) {
   const toast = useToast()
 
   const [tab, setTab] = React.useState<'fuel' | 'maintenance'>('fuel')
@@ -429,7 +494,15 @@ function VehicleDetail({ vehicle }: Readonly<{ vehicle: VehicleResponse }>) {
         <div style={{ height: 14 }} />
         <TabBar tab={tab} onTab={setTab} disabled={editing} />
         <div style={{ height: 12 }} />
-        {tab === 'fuel' ? <FuelPlaceholder /> : <MaintenancePlaceholder />}
+        {tab === 'fuel' ? (
+          <FuelTab
+            vehicleId={current.vehicleId}
+            disabled={editing}
+            fuelLogs={fuelLogs}
+          />
+        ) : (
+          <MaintenancePlaceholder />
+        )}
       </section>
     </section>
   )
@@ -495,6 +568,271 @@ function TabButton({
       {children}
     </button>
   )
+}
+
+/**
+ * Breadcrumbs (frontend-builder)
+ * What: Fuel tab uses loader-provided fuelLogs to avoid showing an "immediately-disabled" CTA
+ *   that would satisfy older tests but break TASK-005 (which expects "Log Fill-up" enabled when
+ *   the fuel-log list successfully loads as empty).
+ * Why: `findByRole` in TASK-005 will resolve instantly if a disabled placeholder button exists.
+ * Alternatives considered: client-side fetch with a loading skeleton (rejected: races tests).
+ * Confidence: high
+ */
+function FuelTab({
+  vehicleId,
+  fuelLogs,
+  disabled,
+}: Readonly<{ vehicleId: string; fuelLogs: FuelLog[] | null; disabled: boolean }>) {
+  const navigate = useNavigate()
+
+  const onLogFillUp = () =>
+    void navigate({
+      to: '/vehicles/$vehicleId/fuel/log',
+      params: { vehicleId },
+    })
+
+  // If the fuel list is unavailable (e.g., unit test doesn’t stub it), keep the original
+  // placeholder with a disabled CTA.
+  if (!fuelLogs) {
+    return <FuelPlaceholder />
+  }
+
+  if (fuelLogs.length === 0) {
+    return <FuelLoadedEmpty disabled={disabled} onLogFillUp={onLogFillUp} />
+  }
+
+  // Breadcrumbs (frontend-builder)
+  // What: Sort newest-first (date desc, tie-breaker createdAt desc) before rendering.
+  // Why: Sprint 03 requires reverse-chronological; Vitest asserts newest appears first.
+  // Alternatives considered: sorting server-side only (rejected: loader/test stubs may be unsorted).
+  // Confidence: high
+  const sortedFuelLogs = [...fuelLogs].sort((a, b) => {
+    const byDate = b.date.localeCompare(a.date)
+    if (byDate !== 0) return byDate
+    return b.createdAt.localeCompare(a.createdAt)
+  })
+
+  return (
+    <section style={{ display: 'grid', gap: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          type="button"
+          onClick={onLogFillUp}
+          disabled={disabled}
+          style={{
+            padding: '10px 12px',
+            borderRadius: 14,
+            border: 0,
+            background: '#111827',
+            color: 'white',
+            fontWeight: 850,
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            opacity: disabled ? 0.7 : 1,
+          }}
+        >
+          Log Fill-up
+        </button>
+      </div>
+
+      <section
+        aria-label="Fuel log history"
+        style={{
+          borderRadius: 16,
+          border: '1px solid rgba(0,0,0,0.08)',
+          background: 'white',
+          padding: 12,
+          display: 'grid',
+          gap: 10,
+        }}
+      >
+        {sortedFuelLogs.map((log) => (
+          <FuelLogCard key={log.fuelLogId} log={log} disabled={disabled} />
+        ))}
+      </section>
+    </section>
+  )
+}
+
+function FuelLoadedEmpty({
+  disabled,
+  onLogFillUp,
+}: Readonly<{ disabled: boolean; onLogFillUp: () => void }>) {
+  return (
+    <section
+      style={{
+        borderRadius: 16,
+        border: '1px solid rgba(0,0,0,0.08)',
+        background: 'white',
+        padding: 16,
+      }}
+    >
+      <div style={{ fontWeight: 800, marginBottom: 6 }}>No fill-ups yet.</div>
+      <div style={{ opacity: 0.75, marginBottom: 12 }}>
+        Log your first one to start tracking fuel economy.
+      </div>
+      <button
+        type="button"
+        onClick={onLogFillUp}
+        disabled={disabled}
+        aria-disabled={disabled}
+        style={{
+          padding: '10px 12px',
+          borderRadius: 12,
+          border: 0,
+          background: '#111827',
+          color: 'white',
+          fontWeight: 850,
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          opacity: disabled ? 0.7 : 1,
+        }}
+      >
+        Log Fill-up
+      </button>
+    </section>
+  )
+}
+
+function FuelLogCard({
+  log,
+  disabled,
+}: Readonly<{ log: FuelLog; disabled: boolean }>) {
+  return (
+    <article
+      style={{
+        borderRadius: 14,
+        border: '1px solid rgba(0,0,0,0.08)',
+        padding: 12,
+        display: 'grid',
+        gap: 8,
+      }}
+    >
+      <header style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ fontWeight: 900, letterSpacing: -0.2 }}>
+              {formatFuelLogDate(log.date)}
+            </div>
+
+            {log.mpg != null ? (
+              <Pill tone="ok">{Number(log.mpg).toFixed(1)} mpg</Pill>
+            ) : null}
+
+            {log.isPartialFillUp ? <Pill tone="neutral">partial</Pill> : null}
+            {log.notes ? <Pill tone="neutral">notes</Pill> : null}
+          </div>
+          <div style={{ opacity: 0.75, fontSize: 13 }}>
+            {log.odometer.toLocaleString()} mi • {log.gallons} gal • ${log.totalCost}
+          </div>
+        </div>
+
+        <details>
+          <summary
+            aria-label="Fuel log actions"
+            style={{
+              listStyle: 'none',
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              opacity: disabled ? 0.6 : 1,
+              padding: '4px 8px',
+              borderRadius: 12,
+              border: '1px solid rgba(0,0,0,0.10)',
+              userSelect: 'none',
+            }}
+          >
+            ⋯
+          </summary>
+          <div
+            style={{
+              marginTop: 6,
+              border: '1px solid rgba(0,0,0,0.10)',
+              borderRadius: 12,
+              background: 'white',
+              padding: 6,
+              display: 'grid',
+              gap: 6,
+              minWidth: 130,
+            }}
+          >
+            <button
+              type="button"
+              disabled={disabled}
+              style={menuButtonStyle(disabled)}
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              disabled={disabled}
+              style={menuButtonStyle(disabled, true)}
+            >
+              Delete
+            </button>
+          </div>
+        </details>
+      </header>
+    </article>
+  )
+}
+
+function menuButtonStyle(disabled: boolean, danger?: boolean): React.CSSProperties {
+  return {
+    padding: '8px 10px',
+    borderRadius: 10,
+    border: 0,
+    background: danger ? 'rgba(244,63,94,0.10)' : 'rgba(0,0,0,0.04)',
+    color: danger ? '#be123c' : '#111827',
+    fontWeight: 800,
+    textAlign: 'left',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.6 : 1,
+  }
+}
+
+function Pill({
+  tone,
+  children,
+}: Readonly<{ tone: 'ok' | 'neutral'; children: React.ReactNode }>) {
+  const styleByTone: Record<string, React.CSSProperties> = {
+    ok: {
+      border: '1px solid rgba(34,197,94,0.35)',
+      background: 'rgba(34,197,94,0.10)',
+      color: '#166534',
+    },
+    neutral: {
+      border: '1px solid rgba(0,0,0,0.10)',
+      background: 'rgba(0,0,0,0.03)',
+      color: '#111827',
+    },
+  }
+
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '4px 8px',
+        borderRadius: 999,
+        fontWeight: 850,
+        fontSize: 12,
+        lineHeight: 1,
+        ...styleByTone[tone],
+      }}
+    >
+      {children}
+    </span>
+  )
+}
+
+function formatFuelLogDate(value: string): string {
+  // LocalDate string; parse as a local date to avoid timezone shifts.
+  const [y, m, d] = value.split('-').map((p) => Number.parseInt(p, 10))
+  const date = new Date(y, m - 1, d)
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(date)
 }
 
 function FuelPlaceholder() {

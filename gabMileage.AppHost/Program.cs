@@ -10,7 +10,10 @@ using Projects;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-var postgres = builder.AddPostgres("postgres");
+var postgres = builder.AddPostgres("postgres")
+    // Ensure the named database exists inside the container (Postgres image creates POSTGRES_DB on init).
+    .WithEnvironment("POSTGRES_DB", "gabmileage");
+
 var db = postgres.AddDatabase("gabmileage");
 
 builder.AddRedis("redis");
@@ -18,6 +21,7 @@ builder.AddRedis("redis");
 var api = builder.AddProject<gabMileage_Api>("api")
     .WaitFor(db)
     .WithReference(db, "Postgres")
+    .WithEnvironment("GatewayForwardedAuth__SharedSecret", "gabMileage-forwarded-auth-shared-secret-0123456789")
     .WithHttpHealthCheck("/health");
 
 var web = builder.AddNpmApp("web", "..\\gabMileage.Web", "dev")
@@ -29,6 +33,11 @@ var gateway = builder.AddProject<gabMileage_Gateway>("gateway")
     // Explicit mapping only: Gateway gets upstream addresses as env vars.
     .WithEnvironment("ReverseProxy__Clusters__api__Destinations__d1__Address", api.GetEndpoint("http"))
     .WithEnvironment("ReverseProxy__Clusters__web__Destinations__d1__Address", web.GetEndpoint("http"))
+    .WithEnvironment("GatewayForwardedAuth__SharedSecret", "gabMileage-forwarded-auth-shared-secret-0123456789")
+    // Enable the Gateway test-login endpoint for local/E2E runs only.
+    // Guardrails live in gabMileage.Gateway: requires non-Production + GatewayTestAuth:Enabled=true.
+    .WithEnvironment("GatewayTestAuth__Enabled", "true")
+    .WithEnvironment("GatewayTestAuth__SigningKey", "gabMileage-dev-test-signing-key-0123456789")
     .WithHttpHealthCheck("/health");
 
 // TanStack Start executes loaders during SSR; Node's fetch requires absolute URLs.

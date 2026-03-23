@@ -40,6 +40,8 @@ builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        // Preserve standard JWT claim names (sub, aud, iss, etc.) so downstream logic can reliably read `sub`.
+        options.MapInboundClaims = false;
         var testAuthEnabled = builder.Configuration.GetValue<bool>("GatewayTestAuth:Enabled");
         if (testAuthEnabled && builder.Environment.IsProduction())
         {

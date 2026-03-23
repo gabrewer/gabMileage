@@ -299,6 +299,9 @@ node_modules/
 .tanstack/
 **/routeTree.gen.ts
 
+# Web build output
+/gabMileage.Web/dist/
+
 # Visual Studio 6 build log
 *.plg
 
