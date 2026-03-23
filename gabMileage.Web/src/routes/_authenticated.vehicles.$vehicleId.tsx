@@ -23,6 +23,7 @@ import {
 } from '../api/fuelLogs'
 import { isUnauthorized } from '../api/me'
 import { useToast } from '../components/Toast'
+import { MaintenanceTab } from '../components/MaintenanceTab'
 
 import { returnToFromHref } from '../lib/returnTo'
 import {
@@ -44,6 +45,14 @@ type FuelLogsLoadResult =
   | { kind: 'unavailable' }
 
 export const Route = createFileRoute('/_authenticated/vehicles/$vehicleId')({
+  // Breadcrumbs (frontend-builder)
+  // What: Persist the selected tab in the URL (?tab=fuel|maintenance).
+  // Why: Returning from child routes (e.g., Add Item / Log Service) should keep Maintenance selected so the user sees the result immediately.
+  // Alternatives considered: local component state only (resets on navigation), localStorage (risk: cross-vehicle leakage).
+  // Confidence: high
+  validateSearch: (search) => ({
+    tab: search.tab === 'maintenance' ? 'maintenance' : 'fuel',
+  }),
   loader: async ({ params, location }) => {
     const returnTo = returnToFromHref(location.href)
 
@@ -112,10 +121,13 @@ function VehicleDetailRoute() {
     select: (s) => s.location.pathname,
   })
 
-  // This route has child routes (e.g. /fuel/log, /fuel/:fuelLogId/edit).
+  // This route has child routes (e.g. /fuel/log, /fuel/:fuelLogId/edit, /maintenance/...)
   // If we're on a child path, render the child route component instead of showing the vehicle
   // detail page underneath it.
-  if (pathname.includes(`/vehicles/${vehicleId}/fuel/`)) {
+  if (
+    pathname.includes(`/vehicles/${vehicleId}/fuel/`) ||
+    pathname.includes(`/vehicles/${vehicleId}/maintenance/`)
+  ) {
     return <Outlet />
   }
 
@@ -233,8 +245,10 @@ function VehicleDetail({
   fuelLogs,
 }: Readonly<{ vehicle: VehicleResponse; fuelLogs: FuelLog[] | null }>) {
   const toast = useToast()
+  const navigate = useNavigate()
+  const { tab: tabFromSearch } = Route.useSearch()
 
-  const [tab, setTab] = React.useState<'fuel' | 'maintenance'>('fuel')
+  const [tab, setTab] = React.useState<'fuel' | 'maintenance'>(() => tabFromSearch)
   const [editing, setEditing] = React.useState(false)
   const [saving, setSaving] = React.useState(false)
   const [banner, setBanner] = React.useState<string | null>(null)
@@ -256,7 +270,14 @@ function VehicleDetail({
     if (lastVehicleIdRef.current === vehicle.vehicleId) return
     lastVehicleIdRef.current = vehicle.vehicleId
 
+    // Always reset the tab on vehicle navigation.
     setTab('fuel')
+    void navigate({
+      to: '.',
+      replace: true,
+      search: (prev) => ({ ...prev, tab: 'fuel' }),
+    })
+
     setEditing(false)
     setSaving(false)
     setBanner(null)
@@ -268,7 +289,22 @@ function VehicleDetail({
       model: vehicle.model ?? '',
       year: vehicle.year?.toString() ?? '',
     })
-  }, [vehicle])
+  }, [navigate, vehicle])
+
+  React.useEffect(() => {
+    setTab(tabFromSearch)
+  }, [tabFromSearch])
+
+  const onTab = React.useCallback(
+    (next: 'fuel' | 'maintenance') => {
+      setTab(next)
+      void navigate({
+        to: '.',
+        search: (prev) => ({ ...prev, tab: next }),
+      })
+    },
+    [navigate],
+  )
 
   const subtitleParts = [current.make, current.model, current.year?.toString()].filter(
     (p) => p && `${p}`.trim().length > 0,
@@ -500,7 +536,7 @@ function VehicleDetail({
         style={{ opacity: editing ? 0.55 : 1, pointerEvents: editing ? 'none' : 'auto' }}
       >
         <div style={{ height: 14 }} />
-        <TabBar tab={tab} onTab={setTab} disabled={editing} />
+        <TabBar tab={tab} onTab={onTab} disabled={editing} />
         <div style={{ height: 12 }} />
         {tab === 'fuel' ? (
           <FuelTab
@@ -509,7 +545,7 @@ function VehicleDetail({
             fuelLogs={fuelLogs}
           />
         ) : (
-          <MaintenancePlaceholder />
+          <MaintenanceTab vehicleId={current.vehicleId} disabled={editing} />
         )}
       </section>
     </section>
