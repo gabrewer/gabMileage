@@ -1,10 +1,11 @@
 import React from 'react'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { AuthRedirectScreen } from '../components/AuthRedirectScreen'
+import { sanitizeReturnTo } from '../lib/returnTo'
 
 export const Route = createFileRoute('/auth/redirect')({
   validateSearch: (search) => ({
-    returnTo: typeof search.returnTo === 'string' ? search.returnTo : '/',
+    returnTo: sanitizeReturnTo(search.returnTo),
   }),
   component: AuthRedirectRoute,
 })

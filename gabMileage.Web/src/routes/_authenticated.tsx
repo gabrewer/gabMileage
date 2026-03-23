@@ -2,6 +2,7 @@ import React from 'react'
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
 import { getMe, isUnauthorized } from '../api/me'
 import { TopBar } from '../components/TopBar'
+import { returnToFromHref } from '../lib/returnTo'
 
 /**
  * Breadcrumbs (frontend-builder)
@@ -10,22 +11,6 @@ import { TopBar } from '../components/TopBar'
  * Alternatives considered: auth checks inside components (rejected; risks flashing protected UI), only guarding / (rejected; won’t scale).
  * Confidence: high
  */
-function safeReturnTo(href: string) {
-  // Gateway requires returnTo be a *relative* path.
-  // Router location.href may be absolute depending on environment.
-  if (!href) return '/'
-
-  if (href.startsWith('http://') || href.startsWith('https://')) {
-    try {
-      const u = new URL(href)
-      return `${u.pathname}${u.search}${u.hash}` || '/'
-    } catch {
-      return '/'
-    }
-  }
-
-  return href
-}
 
 export const Route = createFileRoute('/_authenticated')({
   loader: async ({ location }) => {
@@ -36,7 +21,7 @@ export const Route = createFileRoute('/_authenticated')({
       if (isUnauthorized(err)) {
         throw redirect({
           to: '/login',
-          search: { returnTo: safeReturnTo(location.href) },
+          search: { returnTo: returnToFromHref(location.href) },
         })
       }
       throw err

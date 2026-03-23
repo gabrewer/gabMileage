@@ -1,4 +1,5 @@
 import React from 'react'
+import { sanitizeReturnTo } from '../lib/returnTo'
 
 /**
  * Breadcrumbs (frontend-builder)
@@ -61,7 +62,7 @@ export function LoginScreen({ returnTo }: Readonly<{ returnTo: string }>) {
         <div style={{ height: 16 }} />
 
         <form method="get" action="/api/auth/login">
-          <input type="hidden" name="returnTo" value={returnTo} />
+          <input type="hidden" name="returnTo" value={sanitizeReturnTo(returnTo)} />
           <button
             type="submit"
             style={{
