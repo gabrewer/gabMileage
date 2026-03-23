@@ -9,8 +9,20 @@ export class ApiError extends Error {
   }
 }
 
+function toServerAbsoluteUrl(input: RequestInfo | URL): RequestInfo | URL {
+  // Node's fetch requires absolute URLs. In SSR we reconstruct an absolute URL using the
+  // externally-facing base URL (Aspire/AppHost sets this to the Gateway URL).
+  if (typeof window === 'undefined' && typeof input === 'string' && input.startsWith('/')) {
+    const base =
+      process.env.GABMILEAGE_BASE_URL ?? `http://localhost:${process.env.PORT ?? '3000'}`
+    return new URL(input, base)
+  }
+
+  return input
+}
+
 export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit) {
-  const res = await fetch(input, {
+  const res = await fetch(toServerAbsoluteUrl(input), {
     ...init,
     headers: {
       ...(init?.headers ?? {}),

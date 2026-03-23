@@ -43,11 +43,54 @@ builder.Services
         var workOs = builder.Configuration.GetSection("WorkOS").Get<WorkOsOptions>() ?? new WorkOsOptions();
 
         // Security: never accept unsigned/unverifiable JWTs. If auth is enabled, WorkOS JWT validation inputs must be present.
-        if (string.IsNullOrWhiteSpace(workOs.JwtAuthority))
-            throw new InvalidOperationException("WorkOS:JwtAuthority is required for JWT signature validation.");
+        var isConfigured =
+            !string.IsNullOrWhiteSpace(workOs.JwtAuthority) &&
+            !string.IsNullOrWhiteSpace(workOs.Audience);
 
-        if (string.IsNullOrWhiteSpace(workOs.Audience))
-            throw new InvalidOperationException("WorkOS:Audience is required for JWT audience validation.");
+        if (!isConfigured)
+        {
+            if (!builder.Environment.IsDevelopment())
+            {
+                throw new InvalidOperationException(
+                    "WorkOS:JwtAuthority and WorkOS:Audience are required for JWT signature + audience validation.");
+            }
+
+            // Development experience: allow the Gateway to serve the anonymous frontend even when WorkOS
+            // settings are not yet configured. Auth will be treated as unavailable (all requests unauthenticated).
+            options.RequireHttpsMetadata = false;
+            options.Events = new JwtBearerEvents
+            {
+                OnMessageReceived = context =>
+                {
+                    context.NoResult();
+                    return Task.CompletedTask;
+                },
+                OnChallenge = async context =>
+                {
+                    // Ensure XHR/fetch callers get RFC7807 ProblemDetails on 401 per docs/api/foundation-auth.md.
+                    if (context.Handled)
+                        return;
+
+                    context.HandleResponse();
+
+                    var http = context.HttpContext;
+                    http.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    http.Response.ContentType = "application/problem+json";
+
+                    var problem = new ProblemDetails
+                    {
+                        Type = "https://httpstatuses.com/401",
+                        Title = "Unauthorized",
+                        Status = StatusCodes.Status401Unauthorized,
+                        Detail = "Authentication required. (WorkOS is not configured in Development.)"
+                    };
+
+                    await http.Response.WriteAsync(JsonSerializer.Serialize(problem));
+                }
+            };
+
+            return;
+        }
 
         options.Authority = workOs.JwtAuthority;
         options.RequireHttpsMetadata = true;

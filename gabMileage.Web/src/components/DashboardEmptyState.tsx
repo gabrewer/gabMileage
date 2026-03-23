@@ -4,7 +4,8 @@ import React from 'react'
  * Breadcrumbs (frontend-builder)
  * What: Warm empty garage state with illustration + clear “+ Add Vehicle” CTA.
  * Why: Prevents the dashboard from feeling blank; encourages first action in <30 seconds.
- * Alternatives considered: plain text empty state (rejected; too cold), immediately prompting a full vehicle form (rejected; Sprint 02).
+ * Decision: Heading copy is “Your garage is empty” to align with the Sprint 01 brief and keep E2E assertions stable.
+ * Alternatives considered: “Your garage is ready” (warmer, but less explicit for an empty-state smoke test), plain text only (too cold).
  * Confidence: high
  */
 export function DashboardEmptyState({
@@ -26,7 +27,7 @@ export function DashboardEmptyState({
       <Illustration />
       <div>
         <h1 style={{ margin: 0, fontSize: 20, letterSpacing: -0.2 }}>
-          Your garage is ready.
+          Your garage is empty.
         </h1>
         <p style={{ margin: '6px 0 0', opacity: 0.78, lineHeight: 1.4 }}>
           Add your first vehicle and we’ll help you keep fuel logs and

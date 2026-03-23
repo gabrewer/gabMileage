@@ -25,10 +25,14 @@ var web = builder.AddNpmApp("web", "..\\gabMileage.Web", "dev")
     .WithHttpEndpoint(targetPort: 3000, name: "http")
     .WithHttpHealthCheck("/health");
 
-builder.AddProject<gabMileage_Gateway>("gateway")
+var gateway = builder.AddProject<gabMileage_Gateway>("gateway")
     // Explicit mapping only: Gateway gets upstream addresses as env vars.
     .WithEnvironment("ReverseProxy__Clusters__api__Destinations__d1__Address", api.GetEndpoint("http"))
     .WithEnvironment("ReverseProxy__Clusters__web__Destinations__d1__Address", web.GetEndpoint("http"))
     .WithHttpHealthCheck("/health");
+
+// TanStack Start executes loaders during SSR; Node's fetch requires absolute URLs.
+// Point the Web app at the browser-facing Gateway URL so relative `/api/*` calls work.
+web.WithEnvironment("GABMILEAGE_BASE_URL", gateway.GetEndpoint("http"));
 
 builder.Build().Run();
