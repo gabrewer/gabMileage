@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -13,6 +14,53 @@ public static class GatewayAuthEndpoints
 {
     public static IEndpointRouteBuilder MapGatewayAuthEndpoints(this IEndpointRouteBuilder app)
     {
+        // GET /api/auth/test-login (test-only)
+        // Mints a short-lived JWT for a synthetic user id and sets the standard gab_session cookie.
+        // Guardrails: only mapped when GatewayTestAuth:Enabled=true and environment is non-Production.
+        if (!app.ServiceProvider.GetRequiredService<IHostEnvironment>().IsProduction() &&
+            app.ServiceProvider.GetRequiredService<IConfiguration>().GetValue<bool>("GatewayTestAuth:Enabled"))
+        {
+            app.MapGet("/api/auth/test-login", (
+                    [FromQuery] string? userId,
+                    [FromQuery] string? returnTo,
+                    HttpContext http,
+                    IConfiguration config) =>
+                {
+                    var safeReturnTo = ValidateReturnToOrDefault(returnTo);
+                    if (safeReturnTo is null)
+                    {
+                        return Results.ValidationProblem(new Dictionary<string, string[]>
+                        {
+                            ["returnTo"] = ["Must be a relative path (no scheme/host)."]
+                        });
+                    }
+
+                    var signingKey = config["GatewayTestAuth:SigningKey"];
+                    if (string.IsNullOrWhiteSpace(signingKey))
+                    {
+                        return Results.Problem(statusCode: StatusCodes.Status500InternalServerError,
+                            title: "Test auth misconfigured",
+                            detail: "GatewayTestAuth:SigningKey is required.");
+                    }
+
+                    var sub = string.IsNullOrWhiteSpace(userId) ? $"pw-{Guid.NewGuid():N}" : userId;
+
+                    var key = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(signingKey));
+                    var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+                    var jwt = new JwtSecurityToken(
+                        claims: [new Claim("sub", sub)],
+                        expires: DateTime.UtcNow.AddHours(1),
+                        signingCredentials: creds);
+
+                    var token = new JwtSecurityTokenHandler().WriteToken(jwt);
+                    SessionCookieWriter.SetSessionCookies(http, token, refreshToken: null);
+
+                    return Results.Redirect(safeReturnTo);
+                })
+                .AllowAnonymous();
+        }
+
         // GET /api/auth/login
         app.MapGet("/api/auth/login", (
                 [FromQuery] string? returnTo,

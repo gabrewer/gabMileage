@@ -1,4 +1,5 @@
 using gabMileage.Api.Garage.Vehicles.DomainEvents;
+using NodaTime;
 
 namespace gabMileage.Api.Garage.Vehicles;
 
@@ -12,14 +13,41 @@ public sealed class Vehicle
     public Guid VehicleId { get; private set; }
     public string UserId { get; private set; } = string.Empty;
 
+    // Sprint 02 profile fields (mirrors VehicleAdded/VehicleUpdated payload).
+    public Guid CommandId { get; private set; }
+    public string Name { get; private set; } = string.Empty;
+    public string? Make { get; private set; }
+    public string? Model { get; private set; }
+    public int? Year { get; private set; }
+    public Instant CreatedAt { get; private set; }
+    public Instant UpdatedAt { get; private set; }
+
     public void Apply(VehicleAdded e)
     {
         VehicleId = e.VehicleId;
-        UserId = e.UserId;
+
+        // Avoid assigning ownership inside VehicleUpdated.Apply; ownership is immutable post-creation.
+        var userId = e.UserId;
+        UserId = userId;
+
+        CommandId = e.CommandId;
+
+        Name = e.Name;
+        Make = e.Make;
+        Model = e.Model;
+        Year = e.Year;
+
+        CreatedAt = e.OccurredAt;
+        UpdatedAt = e.OccurredAt;
     }
 
     public void Apply(VehicleUpdated e)
     {
-        // Ownership is immutable after VehicleAdded. VehicleUpdated should not change UserId.
+        // Ownership, CreatedAt, and CommandId are immutable after VehicleAdded.
+        Name = e.Name;
+        Make = e.Make;
+        Model = e.Model;
+        Year = e.Year;
+        UpdatedAt = e.OccurredAt;
     }
 }

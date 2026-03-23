@@ -39,7 +39,10 @@ public sealed class GarageSummaryProjection : MultiStreamProjection<GarageSummar
                 CreatedAt = e.OccurredAt,
             });
 
-            summary.Vehicles = vehicles;
+            // Defensive ordering: out-of-order event replay or clock skew should not break newest-first invariant.
+            summary.Vehicles = vehicles
+                .OrderByDescending(v => v.CreatedAt)
+                .ToList();
             return summary;
         });
 
@@ -50,7 +53,9 @@ public sealed class GarageSummaryProjection : MultiStreamProjection<GarageSummar
             if (existing is null)
             {
                 // Safety: if historical events are replayed out of order, don't blow up projections.
-                summary.Vehicles = vehicles;
+                summary.Vehicles = vehicles
+                    .OrderByDescending(v => v.CreatedAt)
+                    .ToList();
                 return summary;
             }
 
@@ -59,7 +64,10 @@ public sealed class GarageSummaryProjection : MultiStreamProjection<GarageSummar
             existing.Model = e.Model;
             existing.Year = e.Year;
 
-            summary.Vehicles = vehicles;
+            // Re-sort after mutation to persist newest-first ordering.
+            summary.Vehicles = vehicles
+                .OrderByDescending(v => v.CreatedAt)
+                .ToList();
             return summary;
         });
     }

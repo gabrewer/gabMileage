@@ -109,8 +109,13 @@ var marten = builder.Services.AddMarten(options =>
     options.Projections.Add<VehicleProjection>(ProjectionLifecycle.Inline);
 
     // GarageSummary is a per-user read model updated from vehicle events.
-    // Async avoids a shared-document inline projection hotspot under concurrent VehicleAdded writes.
-    options.Projections.Add<GarageSummaryProjection>(ProjectionLifecycle.Async);
+    // Breadcrumbs (backend-builder)
+    // Who: backend-builder
+    // What: Register GarageSummaryProjection as Inline.
+    // Why: Sprint 02 requires read-after-write consistency for /api/v1/garage/summary and tests enforce Inline.
+    // Alternatives considered: Async projection (rejected: eventual consistency and test contract).
+    // Confidence: high
+    options.Projections.Add<GarageSummaryProjection>(ProjectionLifecycle.Inline);
 
     // VehicleReadModel uses StreamId (string) as document identity to align with StreamIdentity.AsString.
     options.Schema.For<VehicleReadModel>()
@@ -257,7 +262,11 @@ app.MapGet("/api/v1/garage/vehicles/{vehicleId}", async (
         .FirstOrDefaultAsync(ct);
 
     if (vehicle is null)
-        return Results.Problem($"Vehicle {vehicleId:D} not found.", statusCode: StatusCodes.Status404NotFound);
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Vehicle {vehicleId:D} not found.");
 
     return Results.Ok(new VehicleResponse(
         vehicle.Id,
@@ -304,7 +313,11 @@ app.MapPut("/api/v1/garage/vehicles/{vehicleId}", async (
     }
     catch (VehicleNotFoundException)
     {
-        return Results.Problem($"Vehicle {vehicleId:D} not found.", statusCode: StatusCodes.Status404NotFound);
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Vehicle {vehicleId:D} not found.");
     }
 })
 .RequireAuthorization()

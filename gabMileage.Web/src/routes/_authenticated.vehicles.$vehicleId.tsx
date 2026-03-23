@@ -242,7 +242,7 @@ function VehicleDetail({ vehicle }: Readonly<{ vehicle: VehicleResponse }>) {
   }
 
   return (
-    <>
+    <section data-testid="vehicle-detail-page">
       <header style={{ display: 'grid', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Link
@@ -431,7 +431,7 @@ function VehicleDetail({ vehicle }: Readonly<{ vehicle: VehicleResponse }>) {
         <div style={{ height: 12 }} />
         {tab === 'fuel' ? <FuelPlaceholder /> : <MaintenancePlaceholder />}
       </section>
-    </>
+    </section>
   )
 }
 
