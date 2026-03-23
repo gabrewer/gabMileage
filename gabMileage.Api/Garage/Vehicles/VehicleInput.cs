@@ -23,21 +23,21 @@ internal static class VehicleInput
         var errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
 
         if (string.IsNullOrWhiteSpace(name))
-            errors["name"] = ["Name is required."];
+            errors["name"] = ["Your vehicle needs a name"];
         else if (name.Length > NameMaxLength)
             errors["name"] = [$"Name must be {NameMaxLength} characters or fewer."];
 
         if (make is not null && make.Length > MakeMaxLength)
-            errors["make"] = [$"Make must be {MakeMaxLength} characters or fewer."];
+            errors["make"] = ["Make is too long"];
 
         if (model is not null && model.Length > ModelMaxLength)
-            errors["model"] = [$"Model must be {ModelMaxLength} characters or fewer."];
+            errors["model"] = ["Model is too long"];
 
         if (year is not null)
         {
             var maxYear = clock.GetCurrentInstant().InZone(DateTimeZone.Utc).Year + 1;
             if (year < MinYear || year > maxYear)
-                errors["year"] = [$"Year must be between {MinYear} and {maxYear}."];
+                errors["year"] = ["Enter a valid year"];
         }
 
         if (errors.Count > 0)

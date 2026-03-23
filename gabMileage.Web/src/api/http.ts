@@ -40,3 +40,23 @@ export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit)
 
   return body as T
 }
+
+export function isApiError(err: unknown): err is ApiError {
+  return err instanceof ApiError
+}
+
+type ValidationProblemDetails = {
+  errors?: Record<string, string[]>
+}
+
+export function getValidationErrors(err: unknown): Record<string, string[]> | null {
+  if (!isApiError(err) || err.status !== 400) return null
+
+  const body = err.body as ValidationProblemDetails | undefined
+  if (!body || typeof body !== 'object') return null
+
+  const errors = body.errors
+  if (!errors || typeof errors !== 'object') return null
+
+  return errors
+}

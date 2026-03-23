@@ -18,7 +18,7 @@ public sealed class GarageSummaryProjectionDestroyerTests
 
         var text = File.ReadAllText(programCs);
         var endpointBlock = ExtractBlock(text,
-            "app.MapGet(\"/api/v1/garage/vehicles/{vehicleId:guid}\"",
+            "app.MapGet(\"/api/v1/garage/vehicles/{vehicleId}\"",
             ".WithName(\"GetVehicle\")");
 
         endpointBlock.ShouldContain("Query<VehicleReadModel>", Case.Sensitive);
@@ -43,7 +43,7 @@ public sealed class GarageSummaryProjectionDestroyerTests
 
         var text = File.ReadAllText(programCs);
         var endpointBlock = ExtractBlock(text,
-            "app.MapGet(\"/api/v1/garage/vehicles/{vehicleId:guid}\"",
+            "app.MapGet(\"/api/v1/garage/vehicles/{vehicleId}\"",
             ".WithName(\"GetVehicle\")");
 
         endpointBlock.ShouldNotContain("StatusCodes.Status403Forbidden", Case.Sensitive);

@@ -242,7 +242,7 @@ app.MapPost("/api/v1/garage/vehicles", async (
 .RequireAuthorization()
 .WithName("AddVehicle");
 
-app.MapGet("/api/v1/garage/vehicles/{vehicleId:guid}", async (
+app.MapGet("/api/v1/garage/vehicles/{vehicleId}", async (
     Guid vehicleId,
     AuthContext authContext,
     IQuerySession session,
@@ -273,7 +273,7 @@ app.MapGet("/api/v1/garage/vehicles/{vehicleId:guid}", async (
 .RequireAuthorization()
 .WithName("GetVehicle");
 
-app.MapPut("/api/v1/garage/vehicles/{vehicleId:guid}", async (
+app.MapPut("/api/v1/garage/vehicles/{vehicleId}", async (
     Guid vehicleId,
     UpdateVehicleRequest request,
     AuthContext authContext,
@@ -304,7 +304,7 @@ app.MapPut("/api/v1/garage/vehicles/{vehicleId:guid}", async (
     }
     catch (VehicleNotFoundException)
     {
-        return Results.NotFound();
+        return Results.Problem($"Vehicle {vehicleId:D} not found.", statusCode: StatusCodes.Status404NotFound);
     }
 })
 .RequireAuthorization()

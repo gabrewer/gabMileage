@@ -6,7 +6,11 @@ import {
   redirect,
   useNavigate,
 } from '@tanstack/react-router'
-import { getGarageSummary, type GarageSummaryResponse } from '../api/garage'
+import {
+  getGarageSummary,
+  type GarageSummaryResponse,
+  type GarageSummaryVehicle,
+} from '../api/garage'
 import { isUnauthorized } from '../api/me'
 import { DashboardEmptyState } from '../components/DashboardEmptyState'
 import { DashboardSkeleton } from '../components/DashboardSkeleton'
@@ -64,20 +68,51 @@ function DashboardRoute() {
   const data = Route.useLoaderData()
 
   const onAddVehicle = () => void navigate({ to: '/vehicles/new' })
+  const onOpenVehicle = (vehicleId: string) =>
+    void navigate({ to: '/vehicles/$vehicleId', params: { vehicleId } })
 
   return (
     <main style={{ maxWidth: 1100, margin: '0 auto', padding: 16 }}>
-      <section style={{ marginBottom: 14 }}>
-        <h1 style={{ margin: 0, fontSize: 18, letterSpacing: -0.2 }}>
-          Garage
-        </h1>
-        <p style={{ margin: '6px 0 0', opacity: 0.75 }}>
-          Quick glance, gentle reminders.
-        </p>
+      <section
+        style={{
+          marginBottom: 14,
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 12,
+        }}
+      >
+        <div>
+          <h1 style={{ margin: 0, fontSize: 18, letterSpacing: -0.2 }}>Garage</h1>
+          <p style={{ margin: '6px 0 0', opacity: 0.75 }}>
+            Quick glance, gentle reminders.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={onAddVehicle}
+          style={{
+            padding: '10px 12px',
+            borderRadius: 14,
+            border: 0,
+            background: '#111827',
+            color: 'white',
+            fontWeight: 850,
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Add Vehicle
+        </button>
       </section>
 
       {'garage' in data ? (
-        <DashboardBody vehicles={data.garage.vehicles} onAddVehicle={onAddVehicle} />
+        <DashboardBody
+          vehicles={data.garage.vehicles}
+          onAddVehicle={onAddVehicle}
+          onOpenVehicle={onOpenVehicle}
+        />
       ) : (
         <React.Suspense fallback={<DashboardSkeleton />}>
           <Await promise={data.garagePromise}>
@@ -94,6 +129,7 @@ function DashboardRoute() {
                 <DashboardBody
                   vehicles={result.value.vehicles}
                   onAddVehicle={onAddVehicle}
+                  onOpenVehicle={onOpenVehicle}
                 />
               )
             }}
@@ -156,8 +192,12 @@ function DashboardLoadErrorState({
 function DashboardBody({
   vehicles,
   onAddVehicle,
-}: Readonly<{ vehicles: unknown[]; onAddVehicle: () => void }>) {
-  // Sprint 01 contract: vehicles is always empty; still implement list branch for extend-only evolution.
+  onOpenVehicle,
+}: Readonly<{
+  vehicles: GarageSummaryVehicle[]
+  onAddVehicle: () => void
+  onOpenVehicle: (vehicleId: string) => void
+}>) {
   if (!vehicles || vehicles.length === 0) {
     return <DashboardEmptyState onAddVehicle={onAddVehicle} />
   }
@@ -167,25 +207,48 @@ function DashboardBody({
       data-testid="garage-vehicle-list"
       style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
         gap: 12,
       }}
     >
-      {vehicles.map((_v, idx) => (
-        // eslint-disable-next-line react/no-array-index-key
-        <div
-          key={idx}
-          style={{
-            border: '1px solid rgba(0,0,0,0.08)',
-            borderRadius: 16,
-            padding: 14,
-            background: 'white',
-          }}
-        >
-          <div style={{ fontWeight: 800 }}>Vehicle</div>
-          <div style={{ opacity: 0.7, fontSize: 12 }}>Details coming soon</div>
-        </div>
-      ))}
+      {vehicles.map((v) => {
+        const subtitle = [v.make, v.model, v.year?.toString()]
+          .filter((p) => p && `${p}`.trim().length > 0)
+          .join(' • ')
+
+        return (
+          <button
+            key={v.vehicleId}
+            type="button"
+            onClick={() => onOpenVehicle(v.vehicleId)}
+            style={{
+              textAlign: 'left',
+              border: '1px solid rgba(0,0,0,0.08)',
+              borderRadius: 16,
+              padding: 14,
+              background: 'white',
+              cursor: 'pointer',
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 900,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+              title={v.name}
+            >
+              {v.name}
+            </div>
+            {subtitle ? (
+              <div style={{ opacity: 0.72, fontSize: 13 }}>{subtitle}</div>
+            ) : (
+              <div style={{ opacity: 0.55, fontSize: 13 }}>Add make/model/year</div>
+            )}
+          </button>
+        )
+      })}
     </section>
   )
 }

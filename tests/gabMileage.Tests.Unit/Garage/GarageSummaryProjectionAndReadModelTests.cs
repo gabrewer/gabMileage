@@ -104,7 +104,7 @@ public sealed class GarageSummaryProjectionAndReadModelTests
         File.Exists(programCs).ShouldBeTrue($"Expected API Program.cs at '{programCs}'.");
 
         var text = File.ReadAllText(programCs);
-        var endpointBlock = ExtractBlock(text, "app.MapGet(\"/api/v1/garage/vehicles/{vehicleId:guid}\"", ".WithName(\"GetVehicle\")");
+        var endpointBlock = ExtractBlock(text, "app.MapGet(\"/api/v1/garage/vehicles/{vehicleId}\"", ".WithName(\"GetVehicle\")");
 
         // Contract: errors are ProblemDetails (application/problem+json).
         // Access rule: cross-user access should be 404 (not 403) to avoid leaking existence.
