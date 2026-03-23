@@ -14,6 +14,7 @@ using gabMileage.Api.Garage.FuelLogs.Handlers;
 using gabMileage.Api.Garage.FuelLogs.Projections;
 using gabMileage.Api.Garage.FuelLogs.ReadModels;
 using gabMileage.Api.Garage.FuelLogs.DomainEvents;
+using gabMileage.Api.Garage.Maintenance;
 using gabMileage.Api.Garage.Maintenance.DomainEvents;
 using gabMileage.Api.Garage.Maintenance.Projections;
 using gabMileage.Api.Garage.Maintenance.ReadModels;
@@ -740,6 +741,142 @@ app.MapDelete("/api/v1/vehicles/{vehicleId}/fuel-logs/{fuelLogId}", async (
 })
 .RequireAuthorization();
 
+app.MapGet("/api/v1/garage/vehicles/{vehicleId}/maintenance", async (
+    Guid vehicleId,
+    AuthContext authContext,
+    IQuerySession session,
+    IClock clock,
+    CancellationToken ct) =>
+{
+    if (vehicleId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId is required."] });
+
+    var vehicle = await session.LoadAsync<VehicleReadModel>(VehicleStreamId.From(vehicleId), ct);
+    if (vehicle is null || !string.Equals(vehicle.UserId, authContext.UserId, StringComparison.Ordinal))
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Vehicle {vehicleId:D} not found.");
+
+    var tabData = await session.LoadAsync<MaintenanceTabData>(MaintenanceTabDataId.From(vehicleId), ct);
+    var fuelLogList = await session.LoadAsync<FuelLogList>(FuelLogListId.From(vehicleId), ct);
+
+    static (LocalDate Date, int Odometer)? LatestMaintenanceOdometer(MaintenanceTabData? data)
+    {
+        if (data is null)
+            return null;
+
+        var hasAny = false;
+        (LocalDate Date, int Odometer) latest = default;
+
+        foreach (var r in data.Items.SelectMany(i => i.Records))
+        {
+            var candidate = (r.Date, r.Odometer);
+            if (!hasAny)
+            {
+                latest = candidate;
+                hasAny = true;
+                continue;
+            }
+
+            if (candidate.Date > latest.Date || (candidate.Date == latest.Date && candidate.Odometer > latest.Odometer))
+                latest = candidate;
+        }
+
+        foreach (var i in data.Items.Where(i => i.LastPerformedOdometer.HasValue))
+        {
+            var candidate = (i.LastPerformedDate ?? LocalDate.MinIsoValue, i.LastPerformedOdometer!.Value);
+            if (!hasAny)
+            {
+                latest = candidate;
+                hasAny = true;
+                continue;
+            }
+
+            if (candidate.Item1 > latest.Date || (candidate.Item1 == latest.Date && candidate.Item2 > latest.Odometer))
+                latest = candidate;
+        }
+
+        return hasAny ? latest : null;
+    }
+
+    static (LocalDate Date, int Odometer)? LatestFuelOdometer(FuelLogList? list)
+    {
+        if (list?.Logs is not { Count: > 0 } logs)
+            return null;
+
+        var top = logs
+            .OrderByDescending(l => l.Date)
+            .ThenByDescending(l => l.Odometer)
+            .First();
+
+        return (top.Date, top.Odometer);
+    }
+
+    var maintenanceLatest = LatestMaintenanceOdometer(tabData);
+    var fuelLatest = LatestFuelOdometer(fuelLogList);
+
+    (LocalDate Date, int Odometer)? latest = (maintenanceLatest, fuelLatest) switch
+    {
+        (null, null) => null,
+        (null, var f) => f,
+        (var m, null) => m,
+        (var m, var f) when f!.Value.Date > m!.Value.Date => f,
+        (var m, var f) when f!.Value.Date < m!.Value.Date => m,
+        (var m, var f) => f!.Value.Odometer >= m!.Value.Odometer ? f : m,
+    };
+
+    var lastOdometer = latest is { Odometer: > 0 } x ? x.Odometer : (int?)null;
+
+    var currentDate = clock.GetCurrentInstant().InUtc().Date;
+
+    var items = (tabData?.Items ?? [])
+        .Select(item =>
+        {
+            var (status, statusDetail, lastPerformedDate, lastPerformedOdometer) =
+                MaintenanceStatusCalculator.Calculate(item, estimatedCurrentMileage: lastOdometer, currentDate);
+
+            var records = (item.Records ?? [])
+                .OrderByDescending(r => r.Date)
+                .ThenByDescending(r => r.Odometer)
+                .Select(r => new MaintenanceRecordResponse(
+                    r.RecordId,
+                    r.ItemId,
+                    r.Date,
+                    r.Odometer,
+                    r.Notes,
+                    r.CreatedAt))
+                .ToArray();
+
+            return new MaintenanceItemResponse(
+                item.ItemId,
+                item.Name,
+                item.MileageInterval,
+                item.TimeIntervalMonths,
+                item.MileageWarning,
+                item.TimeWarningDays,
+                status,
+                statusDetail,
+                lastPerformedDate,
+                lastPerformedOdometer,
+                records);
+        })
+        .OrderBy(i => i.Status switch
+        {
+            "overdue" => 0,
+            "dueSoon" => 1,
+            "ok" => 2,
+            _ => 3
+        })
+        .ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    return Results.Ok(new MaintenanceTabResponse(vehicleId, items, lastOdometer));
+})
+.RequireAuthorization()
+.WithName("GetMaintenanceTab");
+
 // Explicit health endpoints (tests assert these exact strings exist in this project).
 app.MapHealthChecks("/health");
 app.MapHealthChecks("/alive", new HealthCheckOptions
@@ -810,4 +947,30 @@ internal sealed record UpdateFuelLogRequest(
     string? CalculatedField,
     bool IsPartialFillUp,
     string? Notes);
+
+internal sealed record MaintenanceTabResponse(
+    Guid VehicleId,
+    MaintenanceItemResponse[] Items,
+    int? LastOdometer);
+
+internal sealed record MaintenanceItemResponse(
+    Guid ItemId,
+    string Name,
+    int? MileageInterval,
+    int? TimeIntervalMonths,
+    int MileageWarning,
+    int TimeWarningDays,
+    string Status,
+    string StatusDetail,
+    LocalDate? LastPerformedDate,
+    int? LastPerformedOdometer,
+    MaintenanceRecordResponse[] Records);
+
+internal sealed record MaintenanceRecordResponse(
+    Guid RecordId,
+    Guid ItemId,
+    LocalDate Date,
+    int Odometer,
+    string? Notes,
+    Instant CreatedAt);
 
