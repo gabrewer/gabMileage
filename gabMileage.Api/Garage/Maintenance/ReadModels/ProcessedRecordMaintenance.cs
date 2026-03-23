@@ -11,15 +11,22 @@ public sealed class ProcessedRecordMaintenance
 {
     public string Id { get; set; } = string.Empty;    // "{userId}::{commandId}"
     public string UserId { get; set; } = string.Empty;
+
+    // Used to detect accidental commandId reuse against a different vehicle/item.
+    public Guid VehicleId { get; set; }
+    public Guid ItemId { get; set; }
+
     public Guid RecordId { get; set; }
     public Instant ProcessedAt { get; set; }
 
     public ProcessedRecordMaintenance() { }
 
-    public ProcessedRecordMaintenance(string id, string userId, Guid recordId, Instant processedAt)
+    public ProcessedRecordMaintenance(string id, string userId, Guid vehicleId, Guid itemId, Guid recordId, Instant processedAt)
     {
         Id = id;
         UserId = userId;
+        VehicleId = vehicleId;
+        ItemId = itemId;
         RecordId = recordId;
         ProcessedAt = processedAt;
     }

@@ -2,6 +2,7 @@ using gabMileage.Api.Auth;
 using gabMileage.Api.Garage.Maintenance.Commands;
 using gabMileage.Api.Garage.Maintenance.DomainEvents;
 using gabMileage.Api.Garage.Maintenance.ReadModels;
+using gabMileage.Api.Garage.Maintenance.Validation;
 using gabMileage.Api.Garage.Vehicles;
 using gabMileage.Api.Garage.Vehicles.ReadModels;
 using Marten;
@@ -22,19 +23,22 @@ public static class UpdateMaintenanceRecordHandler
             throw new InvalidOperationException("Authenticated user is required.");
 
         if (command.CommandId == Guid.Empty)
-            throw new ArgumentException("CommandId is required.", nameof(command.CommandId));
+            throw new MaintenanceValidationException(new Dictionary<string, string[]> { ["commandId"] = ["CommandId is required."] });
 
         if (command.VehicleId == Guid.Empty)
-            throw new ArgumentException("VehicleId is required.", nameof(command.VehicleId));
+            throw new MaintenanceValidationException(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId is required."] });
 
         if (command.ItemId == Guid.Empty)
-            throw new ArgumentException("ItemId is required.", nameof(command.ItemId));
+            throw new MaintenanceValidationException(new Dictionary<string, string[]> { ["itemId"] = ["ItemId is required."] });
 
         if (command.RecordId == Guid.Empty)
-            throw new ArgumentException("RecordId is required.", nameof(command.RecordId));
+            throw new MaintenanceValidationException(new Dictionary<string, string[]> { ["recordId"] = ["RecordId is required."] });
 
+        // Guardrail (TASK-001 destroyer test): reject invalid odometer before any DB work.
         if (command.Odometer <= 0)
-            throw new ArgumentOutOfRangeException(nameof(command.Odometer), "Odometer must be positive.");
+            throw new MaintenanceValidationException(new Dictionary<string, string[]> { ["odometer"] = ["Enter a valid odometer reading"] });
+
+        MaintenanceRecordInput.Validate(command.Date, command.Odometer, command.Notes, clock);
 
         // Ownership check (vehicle)
         var vehicleStreamId = VehicleStreamId.From(command.VehicleId);
@@ -48,7 +52,7 @@ public static class UpdateMaintenanceRecordHandler
             ?.Records.Any(r => r.RecordId == command.RecordId) ?? false;
 
         if (!recordExists)
-            throw new InvalidOperationException($"Maintenance record '{command.RecordId}' not found.");
+            throw new MaintenanceRecordNotFoundException(command.RecordId);
 
         var now = clock.GetCurrentInstant();
 

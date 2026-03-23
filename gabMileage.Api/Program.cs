@@ -15,7 +15,9 @@ using gabMileage.Api.Garage.FuelLogs.Projections;
 using gabMileage.Api.Garage.FuelLogs.ReadModels;
 using gabMileage.Api.Garage.FuelLogs.DomainEvents;
 using gabMileage.Api.Garage.Maintenance;
+using gabMileage.Api.Garage.Maintenance.Commands;
 using gabMileage.Api.Garage.Maintenance.DomainEvents;
+using gabMileage.Api.Garage.Maintenance.Handlers;
 using gabMileage.Api.Garage.Maintenance.Projections;
 using gabMileage.Api.Garage.Maintenance.ReadModels;
 using gabMileage.Api.Users;
@@ -877,6 +879,317 @@ app.MapGet("/api/v1/garage/vehicles/{vehicleId}/maintenance", async (
 .RequireAuthorization()
 .WithName("GetMaintenanceTab");
 
+app.MapPost("/api/v1/garage/vehicles/{vehicleId}/maintenance/items" /* MapPost */, async (
+    Guid vehicleId,
+    DefineMaintenanceItemRequest request,
+    AuthContext authContext,
+    IDocumentSession session,
+    IClock clock,
+    CancellationToken ct) =>
+{
+    if (vehicleId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId is required."] });
+
+    try
+    {
+        var result = await DefineMaintenanceItemHandler.Handle(new DefineMaintenanceItemCommand(
+            request.CommandId,
+            vehicleId,
+            request.Name,
+            request.MileageInterval,
+            request.TimeIntervalMonths,
+            request.MileageWarning,
+            request.TimeWarningDays,
+            request.InitialLastPerformedDate,
+            request.InitialLastPerformedOdometer), authContext, session, clock, ct);
+
+        var response = new MaintenanceItemIdResponse(result.ItemId);
+
+        return result.IsDuplicate
+            ? Results.Ok(response)
+            : Results.Created($"/api/v1/garage/vehicles/{vehicleId:D}/maintenance/items/{result.ItemId:D}", response);
+    }
+    catch (MaintenanceValidationException vex)
+    {
+        return Results.ValidationProblem(vex.Errors);
+    }
+    catch (VehicleNotFoundException)
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Vehicle {vehicleId:D} not found.");
+    }
+})
+.RequireAuthorization();
+
+app.MapPut("/api/v1/garage/vehicles/{vehicleId}/maintenance/items/{itemId}" /* MapPut */, async (
+    Guid vehicleId,
+    Guid itemId,
+    UpdateMaintenanceItemRequest request,
+    AuthContext authContext,
+    IDocumentSession session,
+    IClock clock,
+    CancellationToken ct) =>
+{
+    if (vehicleId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId is required."] });
+
+    if (itemId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["itemId"] = ["ItemId is required."] });
+
+    if (request.VehicleId is not null && request.VehicleId.Value != vehicleId)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId in body must match route."] });
+
+    if (request.ItemId is not null && request.ItemId.Value != itemId)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["itemId"] = ["ItemId in body must match route."] });
+
+    if (request.InitialLastPerformedDate is not null)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["initialLastPerformedDate"] = ["Initial baseline can't be edited."] });
+
+    if (request.InitialLastPerformedOdometer is not null)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["initialLastPerformedOdometer"] = ["Initial baseline can't be edited."] });
+
+    try
+    {
+        await UpdateMaintenanceItemHandler.Handle(new UpdateMaintenanceItemCommand(
+            CommandId: Guid.NewGuid(),
+            VehicleId: vehicleId,
+            ItemId: itemId,
+            Name: request.Name,
+            MileageInterval: request.MileageInterval,
+            TimeIntervalMonths: request.TimeIntervalMonths,
+            MileageWarning: request.MileageWarning,
+            TimeWarningDays: request.TimeWarningDays), authContext, session, clock, ct);
+
+        return Results.Ok(new MaintenanceItemIdResponse(itemId));
+    }
+    catch (MaintenanceValidationException vex)
+    {
+        return Results.ValidationProblem(vex.Errors);
+    }
+    catch (VehicleNotFoundException)
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Vehicle {vehicleId:D} not found.");
+    }
+    catch (MaintenanceItemNotFoundException)
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Maintenance item {itemId:D} not found.");
+    }
+})
+.RequireAuthorization();
+
+app.MapDelete("/api/v1/garage/vehicles/{vehicleId}/maintenance/items/{itemId}", async (
+    Guid vehicleId,
+    Guid itemId,
+    AuthContext authContext,
+    IDocumentSession session,
+    IClock clock,
+    CancellationToken ct) =>
+{
+    if (vehicleId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId is required."] });
+
+    if (itemId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["itemId"] = ["ItemId is required."] });
+
+    try
+    {
+        await RemoveMaintenanceItemHandler.Handle(
+            new RemoveMaintenanceItemCommand(CommandId: Guid.NewGuid(), VehicleId: vehicleId, ItemId: itemId),
+            authContext,
+            session,
+            clock,
+            ct);
+
+        return Results.NoContent();
+    }
+    catch (MaintenanceValidationException vex)
+    {
+        return Results.ValidationProblem(vex.Errors);
+    }
+    catch (VehicleNotFoundException)
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Vehicle {vehicleId:D} not found.");
+    }
+})
+.RequireAuthorization();
+
+app.MapPost("/api/v1/garage/vehicles/{vehicleId}/maintenance/items/{itemId}/records" /* MapPost */, async (
+    Guid vehicleId,
+    Guid itemId,
+    RecordMaintenanceRequest request,
+    AuthContext authContext,
+    IDocumentSession session,
+    IClock clock,
+    CancellationToken ct) =>
+{
+    if (vehicleId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId is required."] });
+
+    if (itemId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["itemId"] = ["ItemId is required."] });
+
+    try
+    {
+        var result = await RecordMaintenanceHandler.Handle(new RecordMaintenanceCommand(
+            request.CommandId,
+            vehicleId,
+            itemId,
+            request.Date,
+            request.Odometer,
+            request.Notes), authContext, session, clock, ct);
+
+        var response = new MaintenanceRecordIdResponse(result.RecordId);
+
+        return result.IsDuplicate
+            ? Results.Ok(response)
+            : Results.Created($"/api/v1/garage/vehicles/{vehicleId:D}/maintenance/items/{itemId:D}/records/{result.RecordId:D}", response);
+    }
+    catch (MaintenanceValidationException vex)
+    {
+        return Results.ValidationProblem(vex.Errors);
+    }
+    catch (VehicleNotFoundException)
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Vehicle {vehicleId:D} not found.");
+    }
+    catch (MaintenanceItemNotFoundException)
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Maintenance item {itemId:D} not found.");
+    }
+})
+.RequireAuthorization();
+
+app.MapPut("/api/v1/garage/vehicles/{vehicleId}/maintenance/items/{itemId}/records/{recordId}" /* MapPut */, async (
+    Guid vehicleId,
+    Guid itemId,
+    Guid recordId,
+    UpdateMaintenanceRecordRequest request,
+    AuthContext authContext,
+    IDocumentSession session,
+    IClock clock,
+    CancellationToken ct) =>
+{
+    if (vehicleId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId is required."] });
+
+    if (itemId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["itemId"] = ["ItemId is required."] });
+
+    if (recordId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["recordId"] = ["RecordId is required."] });
+
+    if (request.VehicleId is not null && request.VehicleId.Value != vehicleId)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId in body must match route."] });
+
+    if (request.ItemId is not null && request.ItemId.Value != itemId)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["itemId"] = ["ItemId in body must match route."] });
+
+    if (request.RecordId is not null && request.RecordId.Value != recordId)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["recordId"] = ["RecordId in body must match route."] });
+
+    try
+    {
+        await UpdateMaintenanceRecordHandler.Handle(new UpdateMaintenanceRecordCommand(
+            CommandId: Guid.NewGuid(),
+            VehicleId: vehicleId,
+            ItemId: itemId,
+            RecordId: recordId,
+            Date: request.Date,
+            Odometer: request.Odometer,
+            Notes: request.Notes), authContext, session, clock, ct);
+
+        return Results.Ok(new MaintenanceRecordIdResponse(recordId));
+    }
+    catch (MaintenanceValidationException vex)
+    {
+        return Results.ValidationProblem(vex.Errors);
+    }
+    catch (VehicleNotFoundException)
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Vehicle {vehicleId:D} not found.");
+    }
+    catch (MaintenanceRecordNotFoundException)
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Maintenance record {recordId:D} not found.");
+    }
+})
+.RequireAuthorization();
+
+app.MapDelete("/api/v1/garage/vehicles/{vehicleId}/maintenance/items/{itemId}/records/{recordId}", async (
+    Guid vehicleId,
+    Guid itemId,
+    Guid recordId,
+    AuthContext authContext,
+    IDocumentSession session,
+    IClock clock,
+    CancellationToken ct) =>
+{
+    if (vehicleId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId is required."] });
+
+    if (itemId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["itemId"] = ["ItemId is required."] });
+
+    if (recordId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["recordId"] = ["RecordId is required."] });
+
+    try
+    {
+        await DeleteMaintenanceRecordHandler.Handle(
+            new DeleteMaintenanceRecordCommand(CommandId: Guid.NewGuid(), VehicleId: vehicleId, ItemId: itemId, RecordId: recordId),
+            authContext,
+            session,
+            clock,
+            ct);
+
+        return Results.NoContent();
+    }
+    catch (MaintenanceValidationException vex)
+    {
+        return Results.ValidationProblem(vex.Errors);
+    }
+    catch (VehicleNotFoundException)
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Vehicle {vehicleId:D} not found.");
+    }
+})
+.RequireAuthorization();
+
 // Explicit health endpoints (tests assert these exact strings exist in this project).
 app.MapHealthChecks("/health");
 app.MapHealthChecks("/alive", new HealthCheckOptions
@@ -973,4 +1286,43 @@ internal sealed record MaintenanceRecordResponse(
     int Odometer,
     string? Notes,
     Instant CreatedAt);
+
+internal sealed record MaintenanceItemIdResponse(Guid ItemId);
+
+internal sealed record MaintenanceRecordIdResponse(Guid RecordId);
+
+internal sealed record DefineMaintenanceItemRequest(
+    Guid CommandId,
+    string Name,
+    int? MileageInterval,
+    int? TimeIntervalMonths,
+    int MileageWarning,
+    int TimeWarningDays,
+    LocalDate? InitialLastPerformedDate,
+    int? InitialLastPerformedOdometer);
+
+internal sealed record UpdateMaintenanceItemRequest(
+    Guid? VehicleId,
+    Guid? ItemId,
+    string Name,
+    int? MileageInterval,
+    int? TimeIntervalMonths,
+    int MileageWarning,
+    int TimeWarningDays,
+    LocalDate? InitialLastPerformedDate,
+    int? InitialLastPerformedOdometer);
+
+internal sealed record RecordMaintenanceRequest(
+    Guid CommandId,
+    LocalDate Date,
+    int Odometer,
+    string? Notes);
+
+internal sealed record UpdateMaintenanceRecordRequest(
+    Guid? VehicleId,
+    Guid? ItemId,
+    Guid? RecordId,
+    LocalDate Date,
+    int Odometer,
+    string? Notes);
 

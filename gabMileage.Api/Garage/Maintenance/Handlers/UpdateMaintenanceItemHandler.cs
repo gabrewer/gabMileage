@@ -23,23 +23,24 @@ public static class UpdateMaintenanceItemHandler
             throw new InvalidOperationException("Authenticated user is required.");
 
         if (command.CommandId == Guid.Empty)
-            throw new ArgumentException("CommandId is required.", nameof(command.CommandId));
+            throw new MaintenanceValidationException(new Dictionary<string, string[]> { ["commandId"] = ["CommandId is required."] });
 
         if (command.VehicleId == Guid.Empty)
-            throw new ArgumentException("VehicleId is required.", nameof(command.VehicleId));
+            throw new MaintenanceValidationException(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId is required."] });
 
         if (command.ItemId == Guid.Empty)
-            throw new ArgumentException("ItemId is required.", nameof(command.ItemId));
+            throw new MaintenanceValidationException(new Dictionary<string, string[]> { ["itemId"] = ["ItemId is required."] });
 
         // Invariant: a maintenance item must have at least one positive interval (miles and/or months).
+        // (The more user-friendly messages are produced by MaintenanceItemInput.)
         if (command.MileageInterval is not null && command.MileageInterval <= 0)
-            throw new ArgumentOutOfRangeException(nameof(command.MileageInterval), "MileageInterval must be positive when provided.");
+            throw new MaintenanceValidationException(new Dictionary<string, string[]> { ["mileageInterval"] = ["Enter a valid mileage interval"] });
 
         if (command.TimeIntervalMonths is not null && command.TimeIntervalMonths <= 0)
-            throw new ArgumentOutOfRangeException(nameof(command.TimeIntervalMonths), "TimeIntervalMonths must be positive when provided.");
+            throw new MaintenanceValidationException(new Dictionary<string, string[]> { ["timeIntervalMonths"] = ["Enter a valid time interval (1–120 months)"] });
 
         if (command.MileageInterval is null && command.TimeIntervalMonths is null)
-            throw new ArgumentException("At least one interval (MileageInterval or TimeIntervalMonths) is required.", nameof(command));
+            throw new MaintenanceValidationException(new Dictionary<string, string[]> { ["intervals"] = ["Set a mileage interval, time interval, or both"] });
 
         // Ownership check (vehicle)
         var vehicleStreamId = VehicleStreamId.From(command.VehicleId);
@@ -50,12 +51,17 @@ public static class UpdateMaintenanceItemHandler
         var maintenanceTab = await session.LoadAsync<MaintenanceTabData>(MaintenanceTabDataId.From(command.VehicleId), cancellationToken);
         var itemExists = maintenanceTab?.Items.Any(i => i.ItemId == command.ItemId) ?? false;
         if (!itemExists)
-            throw new InvalidOperationException($"Maintenance item '{command.ItemId}' not found on vehicle '{command.VehicleId}'.");
+            throw new MaintenanceItemNotFoundException(command.ItemId);
 
         var (name, mileageWarning, timeWarningDays) = MaintenanceItemInput.NormalizeAndValidate(
             command.Name,
+            command.MileageInterval,
+            command.TimeIntervalMonths,
             command.MileageWarning,
-            command.TimeWarningDays);
+            command.TimeWarningDays,
+            initialLastPerformedDate: null,
+            initialLastPerformedOdometer: null,
+            clock);
 
         var now = clock.GetCurrentInstant();
 
