@@ -11,39 +11,50 @@ import viteReact from '@vitejs/plugin-react'
  * Confidence: medium
  */
 
-export default defineConfig({
-  server: {
-    port: Number.parseInt(process.env.PORT ?? '3000', 10),
-  },
-  plugins: [
-    // Start must come before react
-    tanstackStart(),
+export default defineConfig(() => {
+  const isVitest = process.env.VITEST === 'true' || process.env.VITEST === '1'
 
-    // Router plugin must come before react for file-based routing/codegen
-    tanstackRouter({
-      target: 'react',
-      autoCodeSplitting: true,
-    }),
-
-    viteReact(),
-
-    // Aspire health checks expect GET /health to return 200.
-    {
-      name: 'gabmileage-health',
-      configureServer(server) {
-        server.middlewares.use('/health', (_req, res) => {
-          res.statusCode = 200
-          res.setHeader('content-type', 'text/plain')
-          res.end('OK')
-        })
-      },
-      configurePreviewServer(server) {
-        server.middlewares.use('/health', (_req, res) => {
-          res.statusCode = 200
-          res.setHeader('content-type', 'text/plain')
-          res.end('OK')
-        })
-      },
+  return {
+    server: {
+      port: Number.parseInt(process.env.PORT ?? '3000', 10),
     },
-  ],
+    plugins: [
+      // TanStack Start + Router transforms are required for dev/build,
+      // but are disabled for Vitest unit tests.
+      ...(isVitest
+        ? []
+        : [
+            tanstackStart(),
+            tanstackRouter({
+              target: 'react',
+              autoCodeSplitting: true,
+            }),
+          ]),
+
+      viteReact(),
+
+      // Aspire health checks expect GET /health to return 200.
+      {
+        name: 'gabmileage-health',
+        configureServer(server) {
+          server.middlewares.use('/health', (_req, res) => {
+            res.statusCode = 200
+            res.setHeader('content-type', 'text/plain')
+            res.end('OK')
+          })
+        },
+        configurePreviewServer(server) {
+          server.middlewares.use('/health', (_req, res) => {
+            res.statusCode = 200
+            res.setHeader('content-type', 'text/plain')
+            res.end('OK')
+          })
+        },
+      },
+    ],
+    test: {
+      environment: 'jsdom',
+      setupFiles: ['./src/test/setup.ts'],
+    },
+  }
 })

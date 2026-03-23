@@ -30,6 +30,12 @@ function RootComponent() {
 }
 
 function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
+  // In unit tests (jsdom), rendering a full document (<html>/<body>) into RTL's container
+  // results in an empty DOM. Render only children to make route components testable.
+  if (import.meta.env.MODE === 'test') {
+    return <>{children}</>
+  }
+
   return (
     <html>
       <head>

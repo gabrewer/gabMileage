@@ -154,8 +154,10 @@ builder.Services
         {
             // Prevent header spoofing from clients.
             context.ProxyRequest.Headers.Remove("X-User-Id");
+            context.ProxyRequest.Headers.Remove("X-User-Id-Signature");
 
             // Internal contract: Gateway -> Api forwards WorkOS user ID as X-User-Id derived from JWT `sub` claim.
+            // Defense-in-depth: also forward a signature so the Api can reject spoofed headers if it is reachable directly.
             // YARP's RequestTransformContext does not expose route/cluster metadata here, so we scope by path.
             if (context.HttpContext.Request.Path.StartsWithSegments("/api/v1", StringComparison.Ordinal))
             {
@@ -163,6 +165,14 @@ builder.Services
                 if (!string.IsNullOrWhiteSpace(sub))
                 {
                     context.ProxyRequest.Headers.Add("X-User-Id", sub);
+
+                    var secret = builder.Configuration["GatewayForwardedAuth:SharedSecret"] ?? string.Empty;
+                    if (!string.IsNullOrWhiteSpace(secret))
+                    {
+                        using var hmac = new System.Security.Cryptography.HMACSHA256(System.Text.Encoding.UTF8.GetBytes(secret));
+                        var sigBytes = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(sub));
+                        context.ProxyRequest.Headers.Add("X-User-Id-Signature", Convert.ToBase64String(sigBytes));
+                    }
                 }
             }
 

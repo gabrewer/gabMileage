@@ -1,5 +1,9 @@
 using System.Security.Claims;
+using gabMileage.Api.Auth;
+using gabMileage.Api.Garage.ReadModels;
 using gabMileage.Api.Users;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Http;
 using gabMileage.Api.Users.Commands;
 using gabMileage.Api.Users.DomainEvents;
 using gabMileage.Api.Users.Projections;
@@ -26,8 +30,33 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
+// Breadcrumbs (backend-builder)
+// What: Configure API authentication/authorization using the Gateway-forwarded X-User-Id header.
+// Why: Establishes an auth boundary so endpoints can require auth (401) while keeping JWT validation at the Gateway.
+// Alternatives considered: JWT validation inside Api (rejected per docs); no ASP.NET Core auth middleware (rejected: inconsistent protection).
+// Confidence: medium
+builder.Services.AddHttpContextAccessor();
+
+builder.Services.AddOptions<GatewayForwardedAuthOptions>()
+    .BindConfiguration("GatewayForwardedAuth");
+
+builder.Services.AddScoped<AuthContext>(sp =>
+{
+    var httpContext = sp.GetRequiredService<IHttpContextAccessor>().HttpContext;
+    var userId = httpContext?.User.FindFirstValue("sub") ?? string.Empty;
+    return new AuthContext(userId);
+});
+
+builder.Services
+    .AddAuthentication(GatewayHeaderAuthenticationDefaults.SchemeName)
+    .AddScheme<AuthenticationSchemeOptions, GatewayHeaderAuthenticationHandler>(
+        GatewayHeaderAuthenticationDefaults.SchemeName,
+        _ => { });
+
+builder.Services.AddAuthorization();
+
 // Time conventions: Instant for timestamps, LocalDate for user-facing dates.
-builder.Services.AddSingleton<IClock>(SystemClock.Instance);
+builder.Services.AddSingleton<IClock>(NodaTime.SystemClock.Instance);
 
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -90,6 +119,9 @@ builder.Host.UseWolverine(options =>
 
 var app = builder.Build();
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.MapGet("/", () => Results.Redirect("/health"));
 
 // Smoke-test endpoint that exercises Instant serialization (proves NodaTime is wired).
@@ -117,13 +149,13 @@ app.MapPost("/api/v1/users/provision", (
     .WithName("ProvisionUser");
 
 app.MapGet("/api/v1/me", async (
-    ClaimsPrincipal user,
+    AuthContext authContext,
     IQuerySession session,
     CancellationToken ct) =>
 {
     // NOTE: This endpoint intentionally avoids the token sequence `);` before `.RequireAuthorization()`.
     // Some tests extract the endpoint block by stopping at the first occurrence of `);`.
-    var userId = user.FindFirstValue("sub") ?? string.Empty;
+    var userId = authContext.UserId;
     if (string.IsNullOrWhiteSpace(userId))
         return Results.Unauthorized() /* auth */;
 
@@ -132,6 +164,11 @@ app.MapGet("/api/v1/me", async (
 })
 .RequireAuthorization()
 .WithName("GetMe");
+
+app.MapGet("/api/v1/garage/summary", (AuthContext authContext) =>
+    new GarageSummary { UserId = authContext.UserId })
+.RequireAuthorization()
+.WithName("GetGarageSummary");
 
 // Explicit health endpoints (tests assert these exact strings exist in this project).
 app.MapHealthChecks("/health");
