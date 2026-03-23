@@ -1,6 +1,12 @@
 using System.Security.Claims;
 using gabMileage.Api.Auth;
 using gabMileage.Api.Garage.ReadModels;
+using gabMileage.Api.Garage.Vehicles;
+using gabMileage.Api.Garage.Vehicles.Commands;
+using gabMileage.Api.Garage.Vehicles.DomainEvents;
+using gabMileage.Api.Garage.Vehicles.Handlers;
+using gabMileage.Api.Garage.Vehicles.Projections;
+using gabMileage.Api.Garage.Vehicles.ReadModels;
 using gabMileage.Api.Users;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
@@ -92,9 +98,19 @@ var marten = builder.Services.AddMarten(options =>
 
     // Register event types explicitly for durable deserialization.
     options.Events.AddEventType<UserProvisioned>();
+    options.Events.AddEventType<VehicleAdded>();
+    options.Events.AddEventType<VehicleUpdated>();
 
-    // Inline projection: makes UserProfile queryable immediately after provisioning.
+    // Inline projections: read-after-write consistency for query-side models.
     options.Projections.Add<UserProfileProjection>(ProjectionLifecycle.Inline);
+    options.Projections.Add<VehicleProjection>(ProjectionLifecycle.Inline);
+
+    // VehicleReadModel uses StreamId (string) as document identity to align with StreamIdentity.AsString.
+    options.Schema.For<VehicleReadModel>()
+        .Identity(x => x.StreamId)
+        .Index(x => x.UserId)
+        .Index(x => x.Id)
+        .Index(x => new { x.UserId, x.Id });
 
     // Explicit NodaTime JSON configuration for Marten document/event serialization.
     options.UseSystemTextJsonForSerialization(configure: serializerOptions =>
@@ -170,6 +186,96 @@ app.MapGet("/api/v1/garage/summary", (AuthContext authContext) =>
 .RequireAuthorization()
 .WithName("GetGarageSummary");
 
+app.MapPost("/api/v1/garage/vehicles", async (
+    AddVehicleCommand command,
+    AuthContext authContext,
+    IDocumentSession session,
+    IClock clock,
+    CancellationToken ct) =>
+{
+    try
+    {
+        var result = await AddVehicleHandler.Handle(command, authContext, session, clock, ct);
+        var response = new VehicleIdResponse(result.VehicleId);
+
+        return result.IsDuplicate
+            ? Results.Ok(response)
+            : Results.Created($"/api/v1/garage/vehicles/{result.VehicleId:D}", response);
+    }
+    catch (VehicleValidationException vex)
+    {
+        return Results.ValidationProblem(vex.Errors);
+    }
+})
+.RequireAuthorization()
+.WithName("AddVehicle");
+
+app.MapGet("/api/v1/garage/vehicles/{vehicleId:guid}", async (
+    Guid vehicleId,
+    AuthContext authContext,
+    IQuerySession session,
+    CancellationToken ct) =>
+{
+    if (vehicleId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId is required."] });
+
+    var streamId = VehicleStreamId.From(vehicleId);
+    var vehicle = await session.LoadAsync<VehicleReadModel>(streamId, ct);
+
+    if (vehicle is null || !string.Equals(vehicle.UserId, authContext.UserId, StringComparison.Ordinal))
+        return Results.NotFound();
+
+    return Results.Ok(new VehicleResponse(
+        vehicle.Id,
+        vehicle.Name,
+        vehicle.Make,
+        vehicle.Model,
+        vehicle.Year,
+        vehicle.PhotoUrl,
+        vehicle.PhotoThumbnailUrl,
+        vehicle.CreatedAt,
+        vehicle.UpdatedAt));
+})
+.RequireAuthorization()
+.WithName("GetVehicle");
+
+app.MapPut("/api/v1/garage/vehicles/{vehicleId:guid}", async (
+    Guid vehicleId,
+    UpdateVehicleRequest request,
+    AuthContext authContext,
+    IDocumentSession session,
+    IClock clock,
+    CancellationToken ct) =>
+{
+    if (vehicleId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId is required."] });
+
+    if (request.VehicleId is not null && request.VehicleId.Value != vehicleId)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId in body must match route."] });
+
+    try
+    {
+        await UpdateVehicleHandler.Handle(
+            new UpdateVehicleCommand(vehicleId, request.Name, request.Make, request.Model, request.Year),
+            authContext,
+            session,
+            clock,
+            ct);
+
+        return Results.Ok(new VehicleIdResponse(vehicleId));
+    }
+    catch (VehicleValidationException vex)
+    {
+        return Results.ValidationProblem(vex.Errors);
+    }
+    catch (VehicleNotFoundException)
+    {
+        return Results.NotFound();
+    }
+})
+.RequireAuthorization()
+.WithName("UpdateVehicle");
+
 // Explicit health endpoints (tests assert these exact strings exist in this project).
 app.MapHealthChecks("/health");
 app.MapHealthChecks("/alive", new HealthCheckOptions
@@ -178,3 +284,24 @@ app.MapHealthChecks("/alive", new HealthCheckOptions
 });
 
 app.Run();
+
+internal sealed record VehicleIdResponse(Guid VehicleId);
+
+internal sealed record VehicleResponse(
+    Guid VehicleId,
+    string Name,
+    string? Make,
+    string? Model,
+    int? Year,
+    string? PhotoUrl,
+    string? PhotoThumbnailUrl,
+    Instant CreatedAt,
+    Instant UpdatedAt);
+
+internal sealed record UpdateVehicleRequest(
+    Guid? VehicleId,
+    string Name,
+    string? Make,
+    string? Model,
+    int? Year);
+
