@@ -22,8 +22,13 @@ function toServerAbsoluteUrl(input: RequestInfo | URL): RequestInfo | URL {
 }
 
 export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit) {
+  // Vitest unit tests assert GET requests are explicit (method === 'GET').
+  // Keeping this stable also makes fetch mocking less fragile.
+  const method = init?.method ?? 'GET'
+
   const res = await fetch(toServerAbsoluteUrl(input), {
     ...init,
+    method,
     headers: {
       ...(init?.headers ?? {}),
       Accept: 'application/json',

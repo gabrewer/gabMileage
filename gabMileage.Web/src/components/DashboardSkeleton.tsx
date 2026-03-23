@@ -2,7 +2,7 @@ import React from 'react'
 
 export function DashboardSkeleton() {
   return (
-    <main
+    <section
       data-testid="dashboard-skeleton"
       style={{ maxWidth: 1100, margin: '0 auto', padding: 16 }}
     >
@@ -53,6 +53,6 @@ export function DashboardSkeleton() {
           </div>
         ))}
       </div>
-    </main>
+    </section>
   )
 }

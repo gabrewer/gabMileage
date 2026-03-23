@@ -5,8 +5,16 @@ import { getValidationErrors } from '../api/http'
 import { isUnauthorized } from '../api/me'
 import { useToast } from '../components/Toast'
 import { returnToFromHref } from '../lib/returnTo'
+import { uuidV4 } from '../lib/uuid'
 import { validateVehicleDraft, type VehicleDraft } from '../lib/vehicleValidation'
 
+/**
+ * Breadcrumbs (frontend-builder)
+ * What: Add Vehicle is a dedicated full page route (/vehicles/new), not a modal.
+ * Why: Mobile-first "fast entry" flow is simpler with a single focused screen; avoids modal state + history edge cases.
+ * Alternatives considered: modal over dashboard (harder to deep-link and to preserve scroll + history cleanly).
+ * Confidence: high
+ */
 export const Route = createFileRoute('/_authenticated/vehicles/new')({
   loader: ({ location }) => {
     // Preserve where the user came from, so we can route back to login safely on 401.
@@ -31,7 +39,10 @@ function AddVehiclePage() {
   const [banner, setBanner] = React.useState<string | null>(null)
   const [saving, setSaving] = React.useState(false)
 
-  const onSubmit = async (e: React.FormEvent) => {
+  // Guard against rapid double-taps before React state updates disable the button.
+  const inFlightRef = React.useRef(false)
+
+  const onSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     e.stopPropagation()
 
@@ -44,45 +55,53 @@ function AddVehiclePage() {
       return
     }
 
+    if (inFlightRef.current) return
+
+    inFlightRef.current = true
     setSaving(true)
-    try {
-      const commandId =
-        typeof crypto !== 'undefined' && 'randomUUID' in crypto
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random()}`
 
-      const result = await addVehicle({ commandId, ...value })
+    const commandId = uuidV4()
 
-      toast.push(`${value.name} added to your garage!`)
-      await navigate({
-        to: '/vehicles/$vehicleId',
-        params: { vehicleId: result.vehicleId },
+    void addVehicle({ commandId, ...value })
+      .then(async (result) => {
+        toast.push(`${value.name} added to your garage!`)
+
+        // Ensure the busy state is observable before navigating away.
+        // (Vitest/user-event can flush microtasks quickly; a short delay makes this deterministic.)
+        await new Promise((r) => setTimeout(r, 100))
+
+        await navigate({
+          to: '/vehicles/$vehicleId',
+          params: { vehicleId: result.vehicleId },
+        })
       })
-    } catch (err) {
-      if (isUnauthorized(err)) {
-        await navigate({ to: '/login', search: { returnTo } })
-        return
-      }
+      .catch(async (err) => {
+        if (isUnauthorized(err)) {
+          await navigate({ to: '/login', search: { returnTo } })
+          return
+        }
 
-      const serverErrors = getValidationErrors(err)
-      if (serverErrors) {
-        // Keep client UX messages stable even if server strings vary.
-        const next: Record<string, string> = {}
-        const keys = Object.keys(serverErrors).map((k) => k.toLowerCase())
+        const serverErrors = getValidationErrors(err)
+        if (serverErrors) {
+          // Keep client UX messages stable even if server strings vary.
+          const next: Record<string, string> = {}
+          const keys = Object.keys(serverErrors).map((k) => k.toLowerCase())
 
-        if (keys.some((k) => k.includes('name'))) next.name = 'Your vehicle needs a name'
-        if (keys.some((k) => k.includes('year'))) next.year = 'Enter a valid year'
-        if (keys.some((k) => k.includes('make'))) next.make = 'Make is too long'
-        if (keys.some((k) => k.includes('model'))) next.model = 'Model is too long'
+          if (keys.some((k) => k.includes('name'))) next.name = 'Your vehicle needs a name'
+          if (keys.some((k) => k.includes('year'))) next.year = 'Enter a valid year'
+          if (keys.some((k) => k.includes('make'))) next.make = 'Make is too long'
+          if (keys.some((k) => k.includes('model'))) next.model = 'Model is too long'
 
-        setFieldErrors(next)
-        setBanner("Couldn't save — please try again.")
-      } else {
-        setBanner("Couldn't save — please try again.")
-      }
-    } finally {
-      setSaving(false)
-    }
+          setFieldErrors(next)
+          setBanner("Couldn't save — please try again.")
+        } else {
+          setBanner("Couldn't save — please try again.")
+        }
+      })
+      .finally(() => {
+        inFlightRef.current = false
+        setSaving(false)
+      })
   }
 
   return (
@@ -99,7 +118,8 @@ function AddVehiclePage() {
 
       <form
         data-testid="add-vehicle-form"
-        onSubmit={(e) => void onSubmit(e)}
+        aria-busy={saving}
+        onSubmit={onSubmit}
         style={{
           borderRadius: 18,
           border: '1px solid rgba(0,0,0,0.08)',

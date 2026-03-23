@@ -4,6 +4,7 @@ import { getVehicle, isNotFoundVehicle, type VehicleResponse, updateVehicle } fr
 import { isUnauthorized } from '../api/me'
 import { useToast } from '../components/Toast'
 import { returnToFromHref } from '../lib/returnTo'
+import { vehicleAvatarColor, vehicleAvatarTextColor, vehicleInitial } from '../lib/vehicleAvatar'
 import { validateVehicleDraft, type VehicleDraft } from '../lib/vehicleValidation'
 
 type VehicleLoadResult =
@@ -107,7 +108,7 @@ function NotFoundState() {
       }}
     >
       <h1 style={{ margin: 0, fontSize: 18, letterSpacing: -0.2 }}>
-        This vehicle doesn’t exist or has been removed.
+        This vehicle doesn't exist or has been removed.
       </h1>
       <div style={{ height: 10 }} />
       <Link to="/" style={{ fontWeight: 700 }}>
@@ -150,6 +151,13 @@ function LoadErrorState() {
   )
 }
 
+/**
+ * Breadcrumbs (frontend-builder)
+ * What: Vehicle detail header uses a deterministic initial-circle placeholder when photo is null.
+ * Why: Provides a stable, friendly identity anchor on mobile; also matches the TASK-006 test contract.
+ * Alternatives considered: blank avatar slot (too empty), random color per render (flicker).
+ * Confidence: high
+ */
 function VehicleDetail({ vehicle }: Readonly<{ vehicle: VehicleResponse }>) {
   const toast = useToast()
 
@@ -166,6 +174,28 @@ function VehicleDetail({ vehicle }: Readonly<{ vehicle: VehicleResponse }>) {
     model: vehicle.model ?? '',
     year: vehicle.year?.toString() ?? '',
   })
+
+  const lastVehicleIdRef = React.useRef(vehicle.vehicleId)
+
+  React.useEffect(() => {
+    // Contract (TASK-006 Destroyer): navigating between /vehicles/:id must not retain
+    // the previous vehicle's state (header + PUT target).
+    if (lastVehicleIdRef.current === vehicle.vehicleId) return
+    lastVehicleIdRef.current = vehicle.vehicleId
+
+    setTab('fuel')
+    setEditing(false)
+    setSaving(false)
+    setBanner(null)
+    setFieldErrors({})
+    setCurrent(vehicle)
+    setDraft({
+      name: vehicle.name,
+      make: vehicle.make ?? '',
+      model: vehicle.model ?? '',
+      year: vehicle.year?.toString() ?? '',
+    })
+  }, [vehicle])
 
   const subtitleParts = [current.make, current.model, current.year?.toString()].filter(
     (p) => p && `${p}`.trim().length > 0,
@@ -233,6 +263,23 @@ function VehicleDetail({ vehicle }: Readonly<{ vehicle: VehicleResponse }>) {
           >
             ←
           </Link>
+
+          <div
+            data-testid="vehicle-initial-circle"
+            aria-hidden="true"
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 999,
+              display: 'grid',
+              placeItems: 'center',
+              backgroundColor: vehicleAvatarColor(current.vehicleId),
+              color: vehicleAvatarTextColor(current.vehicleId),
+              fontWeight: 900,
+            }}
+          >
+            {vehicleInitial(current.name)}
+          </div>
 
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
@@ -380,7 +427,7 @@ function VehicleDetail({ vehicle }: Readonly<{ vehicle: VehicleResponse }>) {
         style={{ opacity: editing ? 0.55 : 1, pointerEvents: editing ? 'none' : 'auto' }}
       >
         <div style={{ height: 14 }} />
-        <TabBar tab={tab} onTab={setTab} />
+        <TabBar tab={tab} onTab={setTab} disabled={editing} />
         <div style={{ height: 12 }} />
         {tab === 'fuel' ? <FuelPlaceholder /> : <MaintenancePlaceholder />}
       </section>
@@ -391,7 +438,12 @@ function VehicleDetail({ vehicle }: Readonly<{ vehicle: VehicleResponse }>) {
 function TabBar({
   tab,
   onTab,
-}: Readonly<{ tab: 'fuel' | 'maintenance'; onTab: (t: 'fuel' | 'maintenance') => void }>) {
+  disabled,
+}: Readonly<{
+  tab: 'fuel' | 'maintenance'
+  onTab: (t: 'fuel' | 'maintenance') => void
+  disabled: boolean
+}>) {
   return (
     <div
       role="tablist"
@@ -402,10 +454,14 @@ function TabBar({
         gap: 8,
       }}
     >
-      <TabButton active={tab === 'fuel'} onClick={() => onTab('fuel')}>
+      <TabButton active={tab === 'fuel'} onClick={() => onTab('fuel')} disabled={disabled}>
         Fuel
       </TabButton>
-      <TabButton active={tab === 'maintenance'} onClick={() => onTab('maintenance')}>
+      <TabButton
+        active={tab === 'maintenance'}
+        onClick={() => onTab('maintenance')}
+        disabled={disabled}
+      >
         Maintenance
       </TabButton>
     </div>
@@ -415,13 +471,16 @@ function TabBar({
 function TabButton({
   active,
   onClick,
+  disabled,
   children,
-}: Readonly<{ active: boolean; onClick: () => void; children: React.ReactNode }>) {
+}: Readonly<{ active: boolean; onClick: () => void; disabled: boolean; children: React.ReactNode }>) {
   return (
     <button
       type="button"
       role="tab"
       aria-selected={active}
+      disabled={disabled}
+      aria-disabled={disabled}
       onClick={onClick}
       style={{
         padding: '10px 12px',
@@ -429,7 +488,8 @@ function TabButton({
         border: `1px solid ${active ? 'rgba(17,24,39,0.25)' : 'rgba(0,0,0,0.10)'}`,
         background: active ? 'white' : 'rgba(255,255,255,0.70)',
         fontWeight: 850,
-        cursor: 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.6 : 1,
       }}
     >
       {children}

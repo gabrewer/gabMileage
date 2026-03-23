@@ -1,4 +1,5 @@
 import React from 'react'
+import { uuidV4 } from '../lib/uuid'
 
 type ToastItem = {
   id: string
@@ -24,10 +25,8 @@ export function ToastProvider({
   const [items, setItems] = React.useState<ToastItem[]>([])
 
   const push = React.useCallback((message: string) => {
-    const id =
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random()}`
+    // Use UUIDs so toast keys remain stable even when environments stub crypto.
+    const id = uuidV4()
 
     setItems((prev) => [...prev, { id, message }])
   }, [])

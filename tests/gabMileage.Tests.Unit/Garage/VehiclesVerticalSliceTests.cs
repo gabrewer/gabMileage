@@ -120,8 +120,9 @@ public sealed class VehiclesVerticalSliceTests
         csText.ShouldContain("LoadAsync<ProcessedAddVehicle>", Case.Sensitive);
         csText.ShouldContain("command.CommandId", Case.Sensitive);
 
-        // Persist idempotency marker in same transaction
-        csText.ShouldContain("session.Store", Case.Sensitive);
+        // Persist idempotency marker in same transaction.
+        // Insert-only semantics are required to prevent duplicate vehicle creation under concurrent duplicate submissions.
+        csText.ShouldContain("session.Insert", Case.Sensitive);
         csText.ShouldContain("new ProcessedAddVehicle", Case.Sensitive);
     }
 

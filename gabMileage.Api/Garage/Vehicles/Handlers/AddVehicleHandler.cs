@@ -66,7 +66,8 @@ public static class AddVehicleHandler
         session.Events.StartStream<Vehicle>(streamId, added);
 
         // Persist the idempotency marker in the same transaction as the event stream start.
-        session.Store(new ProcessedAddVehicle(
+        // IMPORTANT: Use insert-only semantics so concurrent duplicate submissions are one-winner.
+        session.Insert(new ProcessedAddVehicle(
             markerId,
             auth.UserId,
             vehicleId,
