@@ -1,5 +1,8 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
@@ -20,11 +23,13 @@ public static class GatewayAuthEndpoints
         if (!app.ServiceProvider.GetRequiredService<IHostEnvironment>().IsProduction() &&
             app.ServiceProvider.GetRequiredService<IConfiguration>().GetValue<bool>("GatewayTestAuth:Enabled"))
         {
-            app.MapGet("/api/auth/test-login", (
+            app.MapGet("/api/auth/test-login", async (
                     [FromQuery] string? userId,
                     [FromQuery] string? returnTo,
                     HttpContext http,
-                    IConfiguration config) =>
+                    IConfiguration config,
+                    IHttpClientFactory httpClientFactory,
+                    CancellationToken ct) =>
                 {
                     var safeReturnTo = ValidateReturnToOrDefault(returnTo);
                     if (safeReturnTo is null)
@@ -45,7 +50,7 @@ public static class GatewayAuthEndpoints
 
                     var sub = string.IsNullOrWhiteSpace(userId) ? $"pw-{Guid.NewGuid():N}" : userId;
 
-                    var key = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(signingKey));
+                    var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey));
                     var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
                     var jwt = new JwtSecurityToken(
@@ -55,6 +60,47 @@ public static class GatewayAuthEndpoints
 
                     var token = new JwtSecurityTokenHandler().WriteToken(jwt);
                     SessionCookieWriter.SetSessionCookies(http, token, refreshToken: null);
+
+                    // Breadcrumbs (backend-builder)
+                    // Who: backend-builder
+                    // What: Provision a UserProfile during test-login.
+                    // Why: The Web app expects GET /api/v1/me to return 200; without provisioning it returns 404 and SSR fails.
+                    // Alternatives considered: Make /api/v1/me auto-provision (rejected: keeps provisioning owned by auth boundary).
+                    // Confidence: high
+                    var apiAddress = config["ReverseProxy:Clusters:api:Destinations:d1:Address"];
+                    if (string.IsNullOrWhiteSpace(apiAddress))
+                    {
+                        return Results.Problem(statusCode: StatusCodes.Status500InternalServerError,
+                            title: "Test auth misconfigured",
+                            detail: "ReverseProxy:Clusters:api:Destinations:d1:Address is required for test-login provisioning.");
+                    }
+
+                    var sharedSecret = config["GatewayForwardedAuth:SharedSecret"] ?? string.Empty;
+                    var signature = ComputeSignature(sharedSecret, sub);
+
+                    var client = httpClientFactory.CreateClient();
+                    var provisionUrl = new Uri(new Uri(apiAddress, UriKind.Absolute), "api/v1/users/provision");
+
+                    var request = new HttpRequestMessage(HttpMethod.Post, provisionUrl)
+                    {
+                        Content = JsonContent.Create(new
+                        {
+                            displayName = sub,
+                            email = $"{sub}@example.test",
+                            avatarUrl = (string?)null,
+                        })
+                    };
+
+                    request.Headers.TryAddWithoutValidation("X-User-Id", sub);
+                    request.Headers.TryAddWithoutValidation("X-User-Id-Signature", signature);
+
+                    var provisionResponse = await client.SendAsync(request, ct);
+                    if (!provisionResponse.IsSuccessStatusCode)
+                    {
+                        return Results.Problem(statusCode: StatusCodes.Status500InternalServerError,
+                            title: "Test auth provisioning failed",
+                            detail: $"POST /api/v1/users/provision returned {(int)provisionResponse.StatusCode}.");
+                    }
 
                     return Results.Redirect(safeReturnTo);
                 })
@@ -194,6 +240,21 @@ public static class GatewayAuthEndpoints
             .AllowAnonymous();
 
         return app;
+    }
+
+    private static string ComputeSignature(string sharedSecret, string userId)
+    {
+        // If the secret is missing (e.g. early dev), return a non-empty placeholder.
+        // The Api auth handler still requires the header to be present; in Development it skips signature validation when secret is blank.
+        if (string.IsNullOrWhiteSpace(sharedSecret))
+            return "dev";
+
+        var secretBytes = Encoding.UTF8.GetBytes(sharedSecret);
+        var messageBytes = Encoding.UTF8.GetBytes(userId);
+
+        using var hmac = new HMACSHA256(secretBytes);
+        var sigBytes = hmac.ComputeHash(messageBytes);
+        return Convert.ToBase64String(sigBytes);
     }
 
     private static string? ValidateReturnToOrDefault(string? returnTo)

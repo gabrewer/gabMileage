@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\gabMileage.ServiceDefaults\gabMileage.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\gabMileage.Api\gabMileage.Api.csproj" />
   </ItemGroup>
 
   <ItemGroup>
