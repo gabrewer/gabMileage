@@ -347,6 +347,32 @@ public sealed class FuelLogListProjectionDestroyerTests
         list.Logs.Single(l => l.FuelLogId == bId).Mpg.ShouldBeNull();
     }
 
+    [Fact]
+    public void RecalculateMpgAndSort_WhenLogsAreInsertedNewestFirst_ShouldStillComputeUsingChronologicalBaseline()
+    {
+        // Attack: projection always re-sorts, but callers/tests might supply newest-first order.
+        var aId = Guid.NewGuid();
+        var bId = Guid.NewGuid();
+        var cId = Guid.NewGuid();
+
+        var list = new FuelLogList
+        {
+            Logs =
+            [
+                new FuelLogEntry { FuelLogId = cId, Date = new LocalDate(2026, 3, 3), Odometer = 1200, Gallons = 10m, IsPartialFillUp = false, CreatedAt = Instant.FromUtc(2026, 3, 3, 0, 0) },
+                new FuelLogEntry { FuelLogId = bId, Date = new LocalDate(2026, 3, 2), Odometer = 1100, Gallons = 10m, IsPartialFillUp = false, CreatedAt = Instant.FromUtc(2026, 3, 2, 0, 0) },
+                new FuelLogEntry { FuelLogId = aId, Date = new LocalDate(2026, 3, 1), Odometer = 1000, Gallons = 10m, IsPartialFillUp = false, CreatedAt = Instant.FromUtc(2026, 3, 1, 0, 0) },
+            ]
+        };
+
+        InvokeRecalculateMpgAndSort(list);
+
+        list.Logs.Single(l => l.FuelLogId == aId).Mpg.ShouldBeNull();
+        list.Logs.Single(l => l.FuelLogId == bId).Mpg.ShouldBe(10.0m);
+        list.Logs.Single(l => l.FuelLogId == cId).Mpg.ShouldBe(10.0m);
+        list.Logs[0].FuelLogId.ShouldBe(cId);
+    }
+
     private static void InvokeRecalculateMpgAndSort(FuelLogList list)
     {
         var method = typeof(FuelLogListProjection)

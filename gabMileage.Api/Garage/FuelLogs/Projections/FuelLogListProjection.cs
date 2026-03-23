@@ -106,7 +106,13 @@ public sealed class FuelLogListProjection : MultiStreamProjection<FuelLogList, s
                 continue;
             }
 
-            current.Mpg = Math.Round((decimal)distance / current.Gallons, 1);
+            // Breadcrumbs (backend-builder)
+            // Who: backend-builder
+            // What: Round MPG using midpoint "half-up" behavior (AwayFromZero).
+            // Why: UX expectation + TASK-007 unit test: 1.25 should display as 1.3 (not banker's 1.2).
+            // Alternatives considered: MidpointRounding.ToEven (rejected - surprises users at .x5 midpoints).
+            // Confidence: high
+            current.Mpg = Math.Round((decimal)distance / current.Gallons, 1, MidpointRounding.AwayFromZero);
         }
 
         list.Logs = sorted

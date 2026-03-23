@@ -9,16 +9,49 @@ export class ApiError extends Error {
   }
 }
 
+function getServerBaseUrl(): URL {
+  const raw =
+    process.env.GABMILEAGE_BASE_URL ?? `http://localhost:${process.env.PORT ?? '3000'}`
+  return new URL(raw)
+}
+
+function tryGetRequestUrl(input: RequestInfo | URL): URL | null {
+  try {
+    if (typeof input === 'string') return new URL(input, getServerBaseUrl())
+    if (input instanceof URL) return input
+    if (typeof Request !== 'undefined' && input instanceof Request) return new URL(input.url)
+    return null
+  } catch {
+    return null
+  }
+}
+
 function toServerAbsoluteUrl(input: RequestInfo | URL): RequestInfo | URL {
   // Node's fetch requires absolute URLs. In SSR we reconstruct an absolute URL using the
   // externally-facing base URL (Aspire/AppHost sets this to the Gateway URL).
   if (typeof window === 'undefined' && typeof input === 'string' && input.startsWith('/')) {
-    const base =
-      process.env.GABMILEAGE_BASE_URL ?? `http://localhost:${process.env.PORT ?? '3000'}`
-    return new URL(input, base)
+    return new URL(input, getServerBaseUrl())
   }
 
   return input
+}
+
+async function getIncomingCookieHeader(): Promise<string | undefined> {
+  // Breadcrumbs (backend-builder)
+  // Who: backend-builder
+  // What: Forward the incoming browser Cookie header during SSR fetches.
+  // Why: Without this, SSR calls to the Gateway look anonymous and can cause redirect loops (/ -> /login).
+  // Alternatives considered: disabling SSR for authenticated routes (rejected: bigger behavioral change).
+  // Confidence: medium
+  if (typeof window !== 'undefined') return undefined
+
+  try {
+    const mod = await import('@tanstack/start-server-core')
+    // start-server-core stores the current request in AsyncLocalStorage.
+    return (mod as any).getRequestHeader?.('cookie') as string | undefined
+  } catch {
+    return undefined
+  }
 }
 
 export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit) {
@@ -26,10 +59,17 @@ export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit)
   // Keeping this stable also makes fetch mocking less fragile.
   const method = init?.method ?? 'GET'
 
-  const res = await fetch(toServerAbsoluteUrl(input), {
+  const cookie = await getIncomingCookieHeader()
+
+  const resolvedInput = toServerAbsoluteUrl(input)
+  const url = tryGetRequestUrl(resolvedInput)
+  const forwardCookie = !!cookie && !!url && url.origin === getServerBaseUrl().origin
+
+  const res = await fetch(resolvedInput, {
     ...init,
     method,
     headers: {
+      ...(forwardCookie ? { cookie } : {}),
       ...(init?.headers ?? {}),
       Accept: 'application/json',
     },

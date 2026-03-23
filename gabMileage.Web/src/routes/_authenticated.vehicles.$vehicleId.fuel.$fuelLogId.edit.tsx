@@ -4,6 +4,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { getFuelLogs, updateFuelLog, type FuelLogCalculatedField } from '../api/fuelLogs'
 import { isUnauthorized } from '../api/me'
 import { useToast } from '../components/Toast'
+import { type FieldState, type FuelField, useFuelAutoCalc } from '../lib/fuelAutoCalc'
 
 /**
  * TASK-006 — Edit Fill-up page
@@ -26,13 +27,6 @@ export const Route = createFileRoute('/_authenticated/vehicles/$vehicleId/fuel/$
   component: EditFillUpRoute,
 })
 
-type FuelField = 'gallons' | 'totalCost' | 'pricePerGallon'
-
-type FieldState = 'empty' | 'userEntered' | 'calculated'
-
-type FuelValues = Record<FuelField, string>
-
-type FuelStates = Record<FuelField, FieldState>
 
 function EditFillUpRoute() {
   const navigate = useNavigate()
@@ -47,7 +41,7 @@ function EditFillUpRoute() {
     gallons: log ? String(log.gallons) : '',
     totalCost: log ? String(log.totalCost) : '',
     pricePerGallon: log ? String(log.pricePerGallon) : '',
-    calculatedField: log?.calculatedField ?? null,
+    calculatedField: (log?.calculatedField ?? null) as FuelField | null,
   })
 
   const [date, setDate] = React.useState(() => log?.date ?? todayLocalDate())
@@ -401,250 +395,6 @@ function CalcPill() {
       calc
     </span>
   )
-}
-
-const inconsistentNote =
-  "These numbers don't quite add up — we'll use gallons and total cost to recalculate price/gal."
-
-function useFuelAutoCalc(initial?: {
-  gallons: string
-  totalCost: string
-  pricePerGallon: string
-  calculatedField: FuelLogCalculatedField
-}) {
-  const fuelInputIds = React.useMemo(
-    () => new Set(['field-gallons', 'field-total-cost', 'field-price-gal']),
-    [],
-  )
-
-  const [values, setValues] = React.useState<FuelValues>(() => ({
-    gallons: initial?.gallons ?? '',
-    totalCost: initial?.totalCost ?? '',
-    pricePerGallon: initial?.pricePerGallon ?? '',
-  }))
-
-  const [states, setStates] = React.useState<FuelStates>(() => {
-    const initCalc = (initial?.calculatedField ?? null) as FuelField | null
-
-    const seeded: FuelStates = {
-      gallons: values.gallons.trim().length === 0 ? 'empty' : 'userEntered',
-      totalCost: values.totalCost.trim().length === 0 ? 'empty' : 'userEntered',
-      pricePerGallon: values.pricePerGallon.trim().length === 0 ? 'empty' : 'userEntered',
-    }
-
-    if (initCalc) {
-      seeded[initCalc] = seeded[initCalc] === 'empty' ? 'empty' : 'calculated'
-    }
-
-    return seeded
-  })
-
-  const [userOrder, setUserOrder] = React.useState<FuelField[]>(() => {
-    const initCalc = (initial?.calculatedField ?? null) as FuelField | null
-    if (!initCalc) return ['gallons', 'totalCost', 'pricePerGallon']
-    return (['gallons', 'totalCost', 'pricePerGallon'] as FuelField[]).filter((f) => f !== initCalc)
-  })
-
-  const [note, setNote] = React.useState<string | null>(null)
-
-  const lastCalculatedFieldRef = React.useRef<FuelField | null>(
-    (initial?.calculatedField ?? null) as FuelField | null,
-  )
-  const reassignPendingRef = React.useRef(false)
-
-  const setValue = (field: FuelField, raw: string) => {
-    setNote(null)
-
-    const trimmed = raw.trim()
-
-    setValues((prev) => ({ ...prev, [field]: raw }))
-
-    setStates((prev) => {
-      const nextState: FieldState = trimmed.length === 0 ? 'empty' : 'userEntered'
-
-      const isEditingLastCalculated =
-        prev[field] === 'calculated' && lastCalculatedFieldRef.current === field
-
-      if (isEditingLastCalculated) {
-        reassignPendingRef.current = true
-      } else if (nextState === 'empty') {
-        reassignPendingRef.current = false
-      }
-
-      return { ...prev, [field]: nextState }
-    })
-
-    setUserOrder((prev) => {
-      const without = prev.filter((f) => f !== field)
-      if (trimmed.length === 0) return without
-      return [...without, field]
-    })
-  }
-
-  const onBlur = (e?: React.FocusEvent<HTMLInputElement>) => {
-    const next = e?.relatedTarget
-    if (next instanceof HTMLElement && fuelInputIds.has(next.id)) {
-      return
-    }
-
-    setNote(null)
-
-    const num = (s: string): number | null => {
-      const t = s.trim()
-      if (t.length === 0) return null
-      const n = Number(t)
-      return Number.isFinite(n) ? n : null
-    }
-
-    const gallons = num(values.gallons)
-    const totalCost = num(values.totalCost)
-    const price = num(values.pricePerGallon)
-
-    const userEntered = (Object.keys(states) as FuelField[]).filter(
-      (k) => states[k] === 'userEntered',
-    )
-
-    const setCalculated = (field: FuelField) => {
-      lastCalculatedFieldRef.current = field
-      reassignPendingRef.current = false
-    }
-
-    if (userEntered.length === 3 && reassignPendingRef.current) {
-      const sources = userOrder.slice(-2)
-      if (sources.length !== 2) return
-
-      const target = (['gallons', 'totalCost', 'pricePerGallon'] as const).find(
-        (f) => f !== sources[0] && f !== sources[1],
-      )
-      if (!target) return
-
-      if (target === 'pricePerGallon') {
-        if (gallons == null || totalCost == null || gallons <= 0) return
-        const computed = round(totalCost / gallons, 3)
-        setValues((prev) => ({ ...prev, pricePerGallon: formatForInput(computed, 3) }))
-        setStates({
-          gallons: sources.includes('gallons') ? 'userEntered' : 'calculated',
-          totalCost: sources.includes('totalCost') ? 'userEntered' : 'calculated',
-          pricePerGallon: sources.includes('pricePerGallon') ? 'userEntered' : 'calculated',
-        })
-        setUserOrder(sources)
-        setCalculated('pricePerGallon')
-        return
-      }
-
-      if (target === 'totalCost') {
-        if (gallons == null || price == null) return
-        const computed = round(gallons * price, 2)
-        setValues((prev) => ({ ...prev, totalCost: formatForInput(computed, 2) }))
-        setStates({
-          gallons: sources.includes('gallons') ? 'userEntered' : 'calculated',
-          totalCost: sources.includes('totalCost') ? 'userEntered' : 'calculated',
-          pricePerGallon: sources.includes('pricePerGallon') ? 'userEntered' : 'calculated',
-        })
-        setUserOrder(sources)
-        setCalculated('totalCost')
-        return
-      }
-
-      if (target === 'gallons') {
-        if (totalCost == null || price == null || price <= 0) return
-        const computed = round(totalCost / price, 3)
-        setValues((prev) => ({ ...prev, gallons: formatForInput(computed, 3) }))
-        setStates({
-          gallons: sources.includes('gallons') ? 'userEntered' : 'calculated',
-          totalCost: sources.includes('totalCost') ? 'userEntered' : 'calculated',
-          pricePerGallon: sources.includes('pricePerGallon') ? 'userEntered' : 'calculated',
-        })
-        setUserOrder(sources)
-        setCalculated('gallons')
-      }
-
-      return
-    }
-
-    if (userEntered.length === 3 && gallons != null && totalCost != null && price != null) {
-      if (gallons <= 0) {
-        return
-      }
-
-      const expected = totalCost / gallons
-      if (!Number.isFinite(expected)) return
-
-      const expectedNorm = round(expected, 3)
-      const providedNorm = round(price, 3)
-
-      if (Math.abs(expectedNorm - providedNorm) > 0.01) {
-        setNote(inconsistentNote)
-
-        setValues((prev) => ({
-          ...prev,
-          pricePerGallon: formatForInput(expectedNorm, 3),
-        }))
-
-        setStates({
-          gallons: 'userEntered',
-          totalCost: 'userEntered',
-          pricePerGallon: 'calculated',
-        })
-
-        setUserOrder(['gallons', 'totalCost'])
-        setCalculated('pricePerGallon')
-        return
-      }
-
-      setStates({
-        gallons: 'userEntered',
-        totalCost: 'userEntered',
-        pricePerGallon: 'userEntered',
-      })
-      return
-    }
-
-    if (userEntered.length !== 2) return
-
-    const missing = (['gallons', 'totalCost', 'pricePerGallon'] as FuelField[]).find(
-      (f) => states[f] !== 'userEntered',
-    )
-    if (!missing) return
-
-    if (missing === 'pricePerGallon') {
-      if (gallons == null || totalCost == null || gallons <= 0) return
-      const computed = round(totalCost / gallons, 3)
-      setValues((prev) => ({ ...prev, pricePerGallon: formatForInput(computed, 3) }))
-      setStates((prev) => ({ ...prev, pricePerGallon: 'calculated' }))
-      setCalculated('pricePerGallon')
-      return
-    }
-
-    if (missing === 'totalCost') {
-      if (gallons == null || price == null) return
-      const computed = round(gallons * price, 2)
-      setValues((prev) => ({ ...prev, totalCost: formatForInput(computed, 2) }))
-      setStates((prev) => ({ ...prev, totalCost: 'calculated' }))
-      setCalculated('totalCost')
-      return
-    }
-
-    if (missing === 'gallons') {
-      if (totalCost == null || price == null || price <= 0) return
-      const computed = round(totalCost / price, 3)
-      setValues((prev) => ({ ...prev, gallons: formatForInput(computed, 3) }))
-      setStates((prev) => ({ ...prev, gallons: 'calculated' }))
-      setCalculated('gallons')
-    }
-  }
-
-  return { values, states, setValue, onBlur, note }
-}
-
-function round(value: number, dp: number) {
-  const factor = 10 ** dp
-  return Math.round(value * factor) / factor
-}
-
-function formatForInput(value: number, dp: number) {
-  const fixed = value.toFixed(dp)
-  return fixed.replace(/\.?0+$/, '')
 }
 
 function todayLocalDate() {
