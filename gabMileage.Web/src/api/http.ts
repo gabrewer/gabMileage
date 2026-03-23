@@ -46,7 +46,8 @@ async function getIncomingCookieHeader(): Promise<string | undefined> {
   if (typeof window !== 'undefined') return undefined
 
   try {
-    const mod = await import('@tanstack/start-server-core')
+    const modName = '@tanstack/start-server-core'
+    const mod = await import(/* @vite-ignore */ modName)
     // start-server-core stores the current request in AsyncLocalStorage.
     return (mod as any).getRequestHeader?.('cookie') as string | undefined
   } catch {

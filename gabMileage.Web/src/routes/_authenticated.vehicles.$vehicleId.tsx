@@ -23,6 +23,7 @@ import {
 } from '../api/fuelLogs'
 import { isUnauthorized } from '../api/me'
 import { useToast } from '../components/Toast'
+import { MaintenanceTab } from '../components/MaintenanceTab'
 
 import { returnToFromHref } from '../lib/returnTo'
 import {
@@ -112,10 +113,13 @@ function VehicleDetailRoute() {
     select: (s) => s.location.pathname,
   })
 
-  // This route has child routes (e.g. /fuel/log, /fuel/:fuelLogId/edit).
+  // This route has child routes (e.g. /fuel/log, /fuel/:fuelLogId/edit, /maintenance/...)
   // If we're on a child path, render the child route component instead of showing the vehicle
   // detail page underneath it.
-  if (pathname.includes(`/vehicles/${vehicleId}/fuel/`)) {
+  if (
+    pathname.includes(`/vehicles/${vehicleId}/fuel/`) ||
+    pathname.includes(`/vehicles/${vehicleId}/maintenance/`)
+  ) {
     return <Outlet />
   }
 
@@ -509,7 +513,7 @@ function VehicleDetail({
             fuelLogs={fuelLogs}
           />
         ) : (
-          <MaintenancePlaceholder />
+          <MaintenanceTab vehicleId={current.vehicleId} disabled={editing} />
         )}
       </section>
     </section>
