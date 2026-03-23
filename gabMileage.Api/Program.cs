@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using gabMileage.Api.Auth;
+using gabMileage.Api.Garage.Projections;
 using gabMileage.Api.Garage.ReadModels;
 using gabMileage.Api.Garage.Vehicles;
 using gabMileage.Api.Garage.Vehicles.Commands;
@@ -18,6 +19,8 @@ using JasperFx;
 using JasperFx.Events;
 using JasperFx.Events.Projections;
 using Marten;
+using JasperFx.Events.Daemon;
+using Marten.Linq;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using NodaTime;
@@ -105,6 +108,10 @@ var marten = builder.Services.AddMarten(options =>
     options.Projections.Add<UserProfileProjection>(ProjectionLifecycle.Inline);
     options.Projections.Add<VehicleProjection>(ProjectionLifecycle.Inline);
 
+    // GarageSummary is a per-user read model updated from vehicle events.
+    // Async avoids a shared-document inline projection hotspot under concurrent VehicleAdded writes.
+    options.Projections.Add<GarageSummaryProjection>(ProjectionLifecycle.Async);
+
     // VehicleReadModel uses StreamId (string) as document identity to align with StreamIdentity.AsString.
     options.Schema.For<VehicleReadModel>()
         .Identity(x => x.StreamId)
@@ -112,12 +119,18 @@ var marten = builder.Services.AddMarten(options =>
         .Index(x => x.Id)
         .Index(x => new { x.UserId, x.Id });
 
+    // GarageSummary uses UserId as document identity so it can be loaded by current userId.
+    options.Schema.For<GarageSummary>()
+        .Identity(x => x.UserId)
+        .Index(x => x.UserId);
+
     // Explicit NodaTime JSON configuration for Marten document/event serialization.
     options.UseSystemTextJsonForSerialization(configure: serializerOptions =>
     {
         serializerOptions.ConfigureForNodaTime(DateTimeZoneProviders.Tzdb);
     });
 })
+    .AddAsyncDaemon(DaemonMode.Solo)
     .UseLightweightSessions()
     .IntegrateWithWolverine();
 
@@ -181,8 +194,27 @@ app.MapGet("/api/v1/me", async (
 .RequireAuthorization()
 .WithName("GetMe");
 
-app.MapGet("/api/v1/garage/summary", (AuthContext authContext) =>
-    new GarageSummary { UserId = authContext.UserId })
+app.MapGet("/api/v1/garage/summary", async (
+    AuthContext authContext,
+    IQuerySession session,
+    CancellationToken ct) =>
+{
+    // Breadcrumbs (backend-builder)
+    // Who: backend-builder
+    // What: Load the projection-backed GarageSummary for the current user.
+    // Why: Summary must be query-side and enforce newest-first ordering.
+    // Alternatives considered: Returning a hardcoded empty summary (rejected: Sprint 02 requires vehicles list).
+    // Confidence: high
+
+    var userId = authContext.UserId;
+    var summary = await session.LoadAsync<GarageSummary>(userId, ct) /* break */;
+
+    var vehicles = (summary?.Vehicles ?? Array.Empty<GarageSummaryVehicle>())
+        .OrderByDescending(v => v.CreatedAt)
+        .ToArray() /* break */;
+
+    return new GarageSummary { UserId = userId, Vehicles = vehicles };
+})
 .RequireAuthorization()
 .WithName("GetGarageSummary");
 
@@ -219,11 +251,13 @@ app.MapGet("/api/v1/garage/vehicles/{vehicleId:guid}", async (
     if (vehicleId == Guid.Empty)
         return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId is required."] });
 
-    var streamId = VehicleStreamId.From(vehicleId);
-    var vehicle = await session.LoadAsync<VehicleReadModel>(streamId, ct);
+    // Enforce the auth boundary at the query level: cross-user vehicleIds behave like not-found (404) to avoid existence leaks.
+    var vehicle = await session.Query<VehicleReadModel>()
+        .Where(v => v.Id == vehicleId && v.UserId == authContext.UserId)
+        .FirstOrDefaultAsync(ct);
 
-    if (vehicle is null || !string.Equals(vehicle.UserId, authContext.UserId, StringComparison.Ordinal))
-        return Results.NotFound();
+    if (vehicle is null)
+        return Results.Problem($"Vehicle {vehicleId:D} not found.", statusCode: StatusCodes.Status404NotFound);
 
     return Results.Ok(new VehicleResponse(
         vehicle.Id,
