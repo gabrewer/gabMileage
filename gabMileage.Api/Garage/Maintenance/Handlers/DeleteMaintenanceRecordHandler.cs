@@ -21,9 +21,6 @@ public static class DeleteMaintenanceRecordHandler
         if (string.IsNullOrWhiteSpace(auth.UserId))
             throw new InvalidOperationException("Authenticated user is required.");
 
-        if (command.CommandId == Guid.Empty)
-            throw new ArgumentException("CommandId is required.", nameof(command.CommandId));
-
         if (command.VehicleId == Guid.Empty)
             throw new ArgumentException("VehicleId is required.", nameof(command.VehicleId));
 
@@ -40,21 +37,32 @@ public static class DeleteMaintenanceRecordHandler
             throw new VehicleNotFoundException(command.VehicleId);
 
         var maintenanceTab = await session.LoadAsync<MaintenanceTabData>(MaintenanceTabDataId.From(command.VehicleId), cancellationToken);
-        var recordExists = maintenanceTab?.Items
-            .FirstOrDefault(i => i.ItemId == command.ItemId)
-            ?.Records.Any(r => r.RecordId == command.RecordId) ?? false;
 
-        if (!recordExists)
-            return; // delete is idempotent
+        var item = maintenanceTab?.Items.FirstOrDefault(i => i.ItemId == command.ItemId);
+        if (item is null)
+            throw new MaintenanceItemNotFoundException(command.ItemId);
+
+        var record = item.Records.FirstOrDefault(r => r.RecordId == command.RecordId);
+        if (record is null)
+            throw new MaintenanceRecordNotFoundException(command.RecordId);
 
         var now = clock.GetCurrentInstant();
+
+        // Breadcrumbs (backend-builder)
+        // Who: backend-builder
+        // What: DeleteMaintenanceRecordCommand carries only route IDs; handler generates a new CommandId for the persisted event.
+        // Why: Sprint 04 domain model treats DELETE as naturally idempotent without a processed-command marker, but events still
+        //      include a CommandId for traceability.
+        // Alternatives considered: require client-supplied CommandId (rejected: violates TASK-006 contract).
+        // Confidence: high
+        var commandId = Guid.NewGuid();
 
         session.Events.Append(vehicleStreamId, new MaintenanceRecordDeleted(
             command.RecordId,
             command.ItemId,
             command.VehicleId,
             auth.UserId,
-            command.CommandId,
+            commandId,
             now));
 
         await session.SaveChangesAsync(cancellationToken);

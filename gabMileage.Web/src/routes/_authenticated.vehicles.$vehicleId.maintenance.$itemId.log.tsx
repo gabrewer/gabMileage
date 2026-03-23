@@ -99,7 +99,17 @@ function LogServiceRoute() {
 
       await recordMaintenance(vehicleId, itemId, req)
       toast.push('Service recorded!')
-      await navigate({ to: '/vehicles/$vehicleId', params: { vehicleId } })
+
+      // Breadcrumbs (frontend-builder)
+      // What: Return to vehicle detail with the Maintenance tab selected.
+      // Why: User just logged service; they should land back on the item list and see updated "Last performed" immediately.
+      // Alternatives considered: switching to Fuel (rejected: disorienting), forcing an in-place modal (rejected: more UI complexity).
+      // Confidence: high
+      await navigate({
+        to: '/vehicles/$vehicleId',
+        params: { vehicleId },
+        search: { tab: 'maintenance' },
+      })
     } catch (err) {
       if (isUnauthorized(err)) {
         window.location.assign(`/login?returnTo=${encodeURIComponent(window.location.pathname)}`)

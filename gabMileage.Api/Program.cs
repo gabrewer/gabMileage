@@ -1167,7 +1167,7 @@ app.MapDelete("/api/v1/garage/vehicles/{vehicleId}/maintenance/items/{itemId}/re
     try
     {
         await DeleteMaintenanceRecordHandler.Handle(
-            new DeleteMaintenanceRecordCommand(CommandId: Guid.NewGuid(), VehicleId: vehicleId, ItemId: itemId, RecordId: recordId),
+            new DeleteMaintenanceRecordCommand(RecordId: recordId, ItemId: itemId, VehicleId: vehicleId),
             authContext,
             session,
             clock,
@@ -1178,6 +1178,22 @@ app.MapDelete("/api/v1/garage/vehicles/{vehicleId}/maintenance/items/{itemId}/re
     catch (MaintenanceValidationException vex)
     {
         return Results.ValidationProblem(vex.Errors);
+    }
+    catch (MaintenanceItemNotFoundException)
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Maintenance item {itemId:D} not found.");
+    }
+    catch (MaintenanceRecordNotFoundException)
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Maintenance record {recordId:D} not found.");
     }
     catch (VehicleNotFoundException)
     {

@@ -119,7 +119,17 @@ function AddMaintenanceItemRoute() {
 
       await defineMaintenanceItem(vehicleId, req)
       toast.push(`${trimmedName} added`)
-      await navigate({ to: '/vehicles/$vehicleId', params: { vehicleId } })
+
+      // Breadcrumbs (frontend-builder)
+      // What: Return to vehicle detail with the Maintenance tab selected.
+      // Why: Fast feedback loop — user should immediately see the newly created item on the tab.
+      // Alternatives considered: resetting to Fuel (rejected: extra tap), relying on in-memory tab state (rejected: lost on navigation).
+      // Confidence: high
+      await navigate({
+        to: '/vehicles/$vehicleId',
+        params: { vehicleId },
+        search: { tab: 'maintenance' },
+      })
     } catch (err) {
       if (isUnauthorized(err)) {
         window.location.assign(`/login?returnTo=${encodeURIComponent(window.location.pathname)}`)

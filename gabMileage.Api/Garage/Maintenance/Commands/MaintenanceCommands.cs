@@ -49,7 +49,6 @@ public sealed record UpdateMaintenanceRecordCommand(
     string? Notes);
 
 public sealed record DeleteMaintenanceRecordCommand(
-    Guid CommandId,
-    Guid VehicleId,
+    Guid RecordId,
     Guid ItemId,
-    Guid RecordId);
+    Guid VehicleId);
