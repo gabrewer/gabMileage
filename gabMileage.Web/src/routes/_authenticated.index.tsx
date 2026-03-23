@@ -6,11 +6,16 @@ import {
   redirect,
   useNavigate,
 } from '@tanstack/react-router'
-import { getGarageSummary, type GarageSummaryResponse } from '../api/garage'
+import {
+  getGarageSummary,
+  type GarageSummaryResponse,
+  type GarageSummaryVehicle,
+} from '../api/garage'
 import { isUnauthorized } from '../api/me'
 import { DashboardEmptyState } from '../components/DashboardEmptyState'
 import { DashboardSkeleton } from '../components/DashboardSkeleton'
 import { returnToFromHref } from '../lib/returnTo'
+import { vehicleAvatarColor, vehicleAvatarTextColor, vehicleInitial } from '../lib/vehicleAvatar'
 
 type GarageLoadResult =
   | { kind: 'ok'; value: GarageSummaryResponse }
@@ -51,7 +56,9 @@ export const Route = createFileRoute('/_authenticated/')({
         })
       }
 
-      throw fast.value.error
+      // Contract (TASK-004 Destroyer): even an immediate failure must render the in-page
+      // retryable error state (not escape via a thrown loader error boundary).
+      return { loadError: true as const }
     }
 
     return { returnTo, garagePromise: defer(garagePromise) }
@@ -63,21 +70,63 @@ function DashboardRoute() {
   const navigate = useNavigate()
   const data = Route.useLoaderData()
 
+  // Avoid duplicate "+ Add Vehicle" CTAs when the empty state is visible.
+  // This must be synchronous on first render so tests don't observe a double-CTA flash.
+  const [hideHeaderCta, setHideHeaderCta] = React.useState(() =>
+    'garage' in data ? !data.garage.vehicles || data.garage.vehicles.length === 0 : false,
+  )
+
   const onAddVehicle = () => void navigate({ to: '/vehicles/new' })
+  const onOpenVehicle = (vehicleId: string) =>
+    void navigate({ to: '/vehicles/$vehicleId', params: { vehicleId } })
 
   return (
     <main style={{ maxWidth: 1100, margin: '0 auto', padding: 16 }}>
-      <section style={{ marginBottom: 14 }}>
-        <h1 style={{ margin: 0, fontSize: 18, letterSpacing: -0.2 }}>
-          Garage
-        </h1>
-        <p style={{ margin: '6px 0 0', opacity: 0.75 }}>
-          Quick glance, gentle reminders.
-        </p>
+      <section
+        style={{
+          marginBottom: 14,
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 12,
+        }}
+      >
+        <div>
+          <h1 style={{ margin: 0, fontSize: 18, letterSpacing: -0.2 }}>Your Garage</h1>
+          <p style={{ margin: '6px 0 0', opacity: 0.75 }}>
+            Quick glance, gentle reminders.
+          </p>
+        </div>
+
+        {!hideHeaderCta ? (
+          <button
+            type="button"
+            onClick={onAddVehicle}
+            style={{
+              padding: '10px 12px',
+              borderRadius: 14,
+              border: 0,
+              background: '#111827',
+              color: 'white',
+              fontWeight: 850,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            + Add Vehicle
+          </button>
+        ) : null}
       </section>
 
-      {'garage' in data ? (
-        <DashboardBody vehicles={data.garage.vehicles} onAddVehicle={onAddVehicle} />
+      {'loadError' in data ? (
+        <DashboardLoadErrorState onRetry={() => window.location.reload()} />
+      ) : 'garage' in data ? (
+        <DashboardBody
+          vehicles={data.garage.vehicles}
+          onAddVehicle={onAddVehicle}
+          onOpenVehicle={onOpenVehicle}
+          setHideHeaderCta={setHideHeaderCta}
+        />
       ) : (
         <React.Suspense fallback={<DashboardSkeleton />}>
           <Await promise={data.garagePromise}>
@@ -94,6 +143,8 @@ function DashboardRoute() {
                 <DashboardBody
                   vehicles={result.value.vehicles}
                   onAddVehicle={onAddVehicle}
+                  onOpenVehicle={onOpenVehicle}
+                  setHideHeaderCta={setHideHeaderCta}
                 />
               )
             }}
@@ -156,36 +207,99 @@ function DashboardLoadErrorState({
 function DashboardBody({
   vehicles,
   onAddVehicle,
-}: Readonly<{ vehicles: unknown[]; onAddVehicle: () => void }>) {
-  // Sprint 01 contract: vehicles is always empty; still implement list branch for extend-only evolution.
+  onOpenVehicle,
+  setHideHeaderCta,
+}: Readonly<{
+  vehicles: GarageSummaryVehicle[]
+  onAddVehicle: () => void
+  onOpenVehicle: (vehicleId: string) => void
+  setHideHeaderCta: (hidden: boolean) => void
+}>) {
+  const useIsoLayoutEffect =
+    typeof window === 'undefined' ? React.useEffect : React.useLayoutEffect
+
+  useIsoLayoutEffect(() => {
+    setHideHeaderCta(!vehicles || vehicles.length === 0)
+  }, [setHideHeaderCta, vehicles])
   if (!vehicles || vehicles.length === 0) {
     return <DashboardEmptyState onAddVehicle={onAddVehicle} />
   }
 
+  // Contract (TASK-004): UI sorts newest-first even if API returns out-of-order.
+  const sorted = [...vehicles].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+
   return (
+    // Breadcrumbs:
+    // - Who: frontend-builder
+    // - What: Garage card grid uses explicit responsive 1/2/3 columns via Tailwind classes
+    // - Why: Enforces TASK-004 layout contract (no auto-fit/auto-fill) and yields predictable tablet/desktop density
+    // - Alternatives considered: inline gridTemplateColumns with auto-fit; JS/ResizeObserver-driven columns
+    // - Confidence: high
     <section
       data-testid="garage-vehicle-list"
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-        gap: 12,
-      }}
+      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
     >
-      {vehicles.map((_v, idx) => (
-        // eslint-disable-next-line react/no-array-index-key
-        <div
-          key={idx}
-          style={{
-            border: '1px solid rgba(0,0,0,0.08)',
-            borderRadius: 16,
-            padding: 14,
-            background: 'white',
-          }}
-        >
-          <div style={{ fontWeight: 800 }}>Vehicle</div>
-          <div style={{ opacity: 0.7, fontSize: 12 }}>Details coming soon</div>
-        </div>
-      ))}
+      {sorted.map((v) => {
+        const subtitle = [v.make, v.model, v.year?.toString()]
+          .filter((p) => p && `${p}`.trim().length > 0)
+          .join(' • ')
+
+        const initial = vehicleInitial(v.name)
+        const bg = vehicleAvatarColor(v.vehicleId)
+        const fg = vehicleAvatarTextColor(v.vehicleId)
+
+        return (
+          <button
+            key={v.vehicleId}
+            type="button"
+            onClick={() => onOpenVehicle(v.vehicleId)}
+            style={{
+              textAlign: 'left',
+              border: '1px solid rgba(0,0,0,0.08)',
+              borderRadius: 16,
+              padding: 14,
+              background: 'white',
+              cursor: 'pointer',
+              display: 'grid',
+              gridTemplateColumns: '44px 1fr',
+              gap: 12,
+              alignItems: 'center',
+            }}
+          >
+            <div
+              data-testid={`vehicle-avatar-${v.vehicleId}`}
+              aria-hidden="true"
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 999,
+                display: 'grid',
+                placeItems: 'center',
+                backgroundColor: bg,
+                color: fg,
+                fontWeight: 900,
+              }}
+            >
+              {initial}
+            </div>
+
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontWeight: 900,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+                title={v.name}
+              >
+                {v.name}
+              </div>
+              {subtitle ? <div style={{ opacity: 0.72, fontSize: 13 }}>{subtitle}</div> : null}
+            </div>
+          </button>
+        )
+      })}
     </section>
   )
 }

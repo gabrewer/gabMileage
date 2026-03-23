@@ -40,6 +40,73 @@ builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        var testAuthEnabled = builder.Configuration.GetValue<bool>("GatewayTestAuth:Enabled");
+        if (testAuthEnabled && builder.Environment.IsProduction())
+        {
+            throw new InvalidOperationException("GatewayTestAuth cannot be enabled in Production.");
+        }
+
+        // Test auth (non-prod only): validate locally-minted JWTs using a symmetric signing key.
+        if (testAuthEnabled)
+        {
+            var signingKey = builder.Configuration["GatewayTestAuth:SigningKey"];
+            if (string.IsNullOrWhiteSpace(signingKey))
+            {
+                throw new InvalidOperationException(
+                    "GatewayTestAuth:SigningKey is required when GatewayTestAuth:Enabled is true.");
+            }
+
+            options.RequireHttpsMetadata = false;
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = false,
+                ValidateAudience = false,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(signingKey)),
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.FromMinutes(1),
+                NameClaimType = "sub",
+                RoleClaimType = "role"
+            };
+
+            options.Events = new JwtBearerEvents
+            {
+                OnMessageReceived = context =>
+                {
+                    if (context.Request.Cookies.TryGetValue(SessionCookies.GabSession, out var jwt) &&
+                        !string.IsNullOrWhiteSpace(jwt))
+                    {
+                        context.Token = jwt;
+                    }
+
+                    return Task.CompletedTask;
+                },
+                OnChallenge = async context =>
+                {
+                    if (context.Handled)
+                        return;
+
+                    context.HandleResponse();
+
+                    var http = context.HttpContext;
+                    http.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    http.Response.ContentType = "application/problem+json";
+
+                    var problem = new ProblemDetails
+                    {
+                        Type = "https://httpstatuses.com/401",
+                        Title = "Unauthorized",
+                        Status = StatusCodes.Status401Unauthorized,
+                        Detail = "Authentication required."
+                    };
+
+                    await http.Response.WriteAsync(JsonSerializer.Serialize(problem));
+                }
+            };
+
+            return;
+        }
+
         var workOs = builder.Configuration.GetSection("WorkOS").Get<WorkOsOptions>() ?? new WorkOsOptions();
 
         // Security: never accept unsigned/unverifiable JWTs. If auth is enabled, WorkOS JWT validation inputs must be present.

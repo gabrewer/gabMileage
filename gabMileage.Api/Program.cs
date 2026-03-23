@@ -1,6 +1,13 @@
 using System.Security.Claims;
 using gabMileage.Api.Auth;
+using gabMileage.Api.Garage.Projections;
 using gabMileage.Api.Garage.ReadModels;
+using gabMileage.Api.Garage.Vehicles;
+using gabMileage.Api.Garage.Vehicles.Commands;
+using gabMileage.Api.Garage.Vehicles.DomainEvents;
+using gabMileage.Api.Garage.Vehicles.Handlers;
+using gabMileage.Api.Garage.Vehicles.Projections;
+using gabMileage.Api.Garage.Vehicles.ReadModels;
 using gabMileage.Api.Users;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
@@ -12,6 +19,8 @@ using JasperFx;
 using JasperFx.Events;
 using JasperFx.Events.Projections;
 using Marten;
+using JasperFx.Events.Daemon;
+using Marten.Linq;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using NodaTime;
@@ -92,9 +101,33 @@ var marten = builder.Services.AddMarten(options =>
 
     // Register event types explicitly for durable deserialization.
     options.Events.AddEventType<UserProvisioned>();
+    options.Events.AddEventType<VehicleAdded>();
+    options.Events.AddEventType<VehicleUpdated>();
 
-    // Inline projection: makes UserProfile queryable immediately after provisioning.
+    // Inline projections: read-after-write consistency for query-side models.
     options.Projections.Add<UserProfileProjection>(ProjectionLifecycle.Inline);
+    options.Projections.Add<VehicleProjection>(ProjectionLifecycle.Inline);
+
+    // GarageSummary is a per-user read model updated from vehicle events.
+    // Breadcrumbs (backend-builder)
+    // Who: backend-builder
+    // What: Register GarageSummaryProjection as Inline.
+    // Why: Sprint 02 requires read-after-write consistency for /api/v1/garage/summary and tests enforce Inline.
+    // Alternatives considered: Async projection (rejected: eventual consistency and test contract).
+    // Confidence: high
+    options.Projections.Add<GarageSummaryProjection>(ProjectionLifecycle.Inline);
+
+    // VehicleReadModel uses StreamId (string) as document identity to align with StreamIdentity.AsString.
+    options.Schema.For<VehicleReadModel>()
+        .Identity(x => x.StreamId)
+        .Index(x => x.UserId)
+        .Index(x => x.Id)
+        .Index(x => new { x.UserId, x.Id });
+
+    // GarageSummary uses UserId as document identity so it can be loaded by current userId.
+    options.Schema.For<GarageSummary>()
+        .Identity(x => x.UserId)
+        .Index(x => x.UserId);
 
     // Explicit NodaTime JSON configuration for Marten document/event serialization.
     options.UseSystemTextJsonForSerialization(configure: serializerOptions =>
@@ -102,6 +135,7 @@ var marten = builder.Services.AddMarten(options =>
         serializerOptions.ConfigureForNodaTime(DateTimeZoneProviders.Tzdb);
     });
 })
+    .AddAsyncDaemon(DaemonMode.Solo)
     .UseLightweightSessions()
     .IntegrateWithWolverine();
 
@@ -165,10 +199,129 @@ app.MapGet("/api/v1/me", async (
 .RequireAuthorization()
 .WithName("GetMe");
 
-app.MapGet("/api/v1/garage/summary", (AuthContext authContext) =>
-    new GarageSummary { UserId = authContext.UserId })
+app.MapGet("/api/v1/garage/summary", async (
+    AuthContext authContext,
+    IQuerySession session,
+    CancellationToken ct) =>
+{
+    // Breadcrumbs (backend-builder)
+    // Who: backend-builder
+    // What: Load the projection-backed GarageSummary for the current user.
+    // Why: Summary must be query-side and enforce newest-first ordering.
+    // Alternatives considered: Returning a hardcoded empty summary (rejected: Sprint 02 requires vehicles list).
+    // Confidence: high
+
+    var userId = authContext.UserId;
+    var summary = await session.LoadAsync<GarageSummary>(userId, ct) /* break */;
+
+    var vehicles = (summary?.Vehicles ?? Array.Empty<GarageSummaryVehicle>())
+        .OrderByDescending(v => v.CreatedAt)
+        .ToArray() /* break */;
+
+    return new GarageSummary { UserId = userId, Vehicles = vehicles };
+})
 .RequireAuthorization()
 .WithName("GetGarageSummary");
+
+app.MapPost("/api/v1/garage/vehicles", async (
+    AddVehicleCommand command,
+    AuthContext authContext,
+    IDocumentSession session,
+    IClock clock,
+    CancellationToken ct) =>
+{
+    try
+    {
+        var result = await AddVehicleHandler.Handle(command, authContext, session, clock, ct);
+        var response = new VehicleIdResponse(result.VehicleId);
+
+        return result.IsDuplicate
+            ? Results.Ok(response)
+            : Results.Created($"/api/v1/garage/vehicles/{result.VehicleId:D}", response);
+    }
+    catch (VehicleValidationException vex)
+    {
+        return Results.ValidationProblem(vex.Errors);
+    }
+})
+.RequireAuthorization()
+.WithName("AddVehicle");
+
+app.MapGet("/api/v1/garage/vehicles/{vehicleId}", async (
+    Guid vehicleId,
+    AuthContext authContext,
+    IQuerySession session,
+    CancellationToken ct) =>
+{
+    if (vehicleId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId is required."] });
+
+    // Enforce the auth boundary at the query level: cross-user vehicleIds behave like not-found (404) to avoid existence leaks.
+    var vehicle = await session.Query<VehicleReadModel>()
+        .Where(v => v.Id == vehicleId && v.UserId == authContext.UserId)
+        .FirstOrDefaultAsync(ct);
+
+    if (vehicle is null)
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Vehicle {vehicleId:D} not found.");
+
+    return Results.Ok(new VehicleResponse(
+        vehicle.Id,
+        vehicle.Name,
+        vehicle.Make,
+        vehicle.Model,
+        vehicle.Year,
+        vehicle.PhotoUrl,
+        vehicle.PhotoThumbnailUrl,
+        vehicle.CreatedAt,
+        vehicle.UpdatedAt));
+})
+.RequireAuthorization()
+.WithName("GetVehicle");
+
+app.MapPut("/api/v1/garage/vehicles/{vehicleId}", async (
+    Guid vehicleId,
+    UpdateVehicleRequest request,
+    AuthContext authContext,
+    IDocumentSession session,
+    IClock clock,
+    CancellationToken ct) =>
+{
+    if (vehicleId == Guid.Empty)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId is required."] });
+
+    if (request.VehicleId is not null && request.VehicleId.Value != vehicleId)
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["vehicleId"] = ["VehicleId in body must match route."] });
+
+    try
+    {
+        await UpdateVehicleHandler.Handle(
+            new UpdateVehicleCommand(vehicleId, request.Name, request.Make, request.Model, request.Year),
+            authContext,
+            session,
+            clock,
+            ct);
+
+        return Results.Ok(new VehicleIdResponse(vehicleId));
+    }
+    catch (VehicleValidationException vex)
+    {
+        return Results.ValidationProblem(vex.Errors);
+    }
+    catch (VehicleNotFoundException)
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status404NotFound,
+            title: "Not Found",
+            type: "https://httpstatuses.com/404",
+            detail: $"Vehicle {vehicleId:D} not found.");
+    }
+})
+.RequireAuthorization()
+.WithName("UpdateVehicle");
 
 // Explicit health endpoints (tests assert these exact strings exist in this project).
 app.MapHealthChecks("/health");
@@ -178,3 +331,24 @@ app.MapHealthChecks("/alive", new HealthCheckOptions
 });
 
 app.Run();
+
+internal sealed record VehicleIdResponse(Guid VehicleId);
+
+internal sealed record VehicleResponse(
+    Guid VehicleId,
+    string Name,
+    string? Make,
+    string? Model,
+    int? Year,
+    string? PhotoUrl,
+    string? PhotoThumbnailUrl,
+    Instant CreatedAt,
+    Instant UpdatedAt);
+
+internal sealed record UpdateVehicleRequest(
+    Guid? VehicleId,
+    string Name,
+    string? Make,
+    string? Model,
+    int? Year);
+

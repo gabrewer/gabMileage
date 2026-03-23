@@ -22,8 +22,13 @@ function toServerAbsoluteUrl(input: RequestInfo | URL): RequestInfo | URL {
 }
 
 export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit) {
+  // Vitest unit tests assert GET requests are explicit (method === 'GET').
+  // Keeping this stable also makes fetch mocking less fragile.
+  const method = init?.method ?? 'GET'
+
   const res = await fetch(toServerAbsoluteUrl(input), {
     ...init,
+    method,
     headers: {
       ...(init?.headers ?? {}),
       Accept: 'application/json',
@@ -39,4 +44,24 @@ export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit)
   }
 
   return body as T
+}
+
+export function isApiError(err: unknown): err is ApiError {
+  return err instanceof ApiError
+}
+
+type ValidationProblemDetails = {
+  errors?: Record<string, string[]>
+}
+
+export function getValidationErrors(err: unknown): Record<string, string[]> | null {
+  if (!isApiError(err) || err.status !== 400) return null
+
+  const body = err.body as ValidationProblemDetails | undefined
+  if (!body || typeof body !== 'object') return null
+
+  const errors = body.errors
+  if (!errors || typeof errors !== 'object') return null
+
+  return errors
 }

@@ -1,6 +1,7 @@
 import React from 'react'
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
 import { getMe, isUnauthorized } from '../api/me'
+import { ToastProvider } from '../components/Toast'
 import { TopBar } from '../components/TopBar'
 import { returnToFromHref } from '../lib/returnTo'
 
@@ -34,9 +35,11 @@ function AuthenticatedLayout() {
   const { me } = Route.useLoaderData()
 
   return (
-    <div style={{ minHeight: '100vh', background: 'rgba(17,24,39,0.02)' }}>
-      <TopBar me={me} />
-      <Outlet />
-    </div>
+    <ToastProvider>
+      <div style={{ minHeight: '100vh', background: 'rgba(17,24,39,0.02)' }}>
+        <TopBar me={me} />
+        <Outlet />
+      </div>
+    </ToastProvider>
   )
 }
