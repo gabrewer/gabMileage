@@ -287,6 +287,10 @@ FakesAssemblies/
 .ntvs_analysis.dat
 node_modules/
 
+# TanStack generated (web)
+.tanstack/
+**/routeTree.gen.ts
+
 # Visual Studio 6 build log
 *.plg
 

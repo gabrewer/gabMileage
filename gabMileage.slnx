@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/gabMileage.Api/gabMileage.Api.csproj" />
+    <Project Path="src/gabMileage.AppHost/gabMileage.AppHost.csproj" />
+    <Project Path="src/gabMileage.Gateway/gabMileage.Gateway.csproj" />
+    <Project Path="src/gabMileage.ServiceDefaults/gabMileage.ServiceDefaults.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/gabMileage.Tests.Unit/gabMileage.Tests.Unit.csproj" />
+  </Folder>
+</Solution>
