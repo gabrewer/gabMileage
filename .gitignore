@@ -123,6 +123,14 @@ ipch/
 # Visual Studio Trace Files
 *.e2e
 
+# The project folder name ends with ".E2E" so the pattern above would ignore it on case-insensitive file systems.
+!tests/gabMileage.Tests.E2E/
+!tests/gabMileage.Tests.E2E/**
+
+# Playwright artifacts
+**/test-results/
+**/playwright-report/
+
 # TFS 2012 Local Workspace
 $tf/
 
@@ -286,6 +294,10 @@ FakesAssemblies/
 # Node.js Tools for Visual Studio
 .ntvs_analysis.dat
 node_modules/
+
+# TanStack generated (web)
+.tanstack/
+**/routeTree.gen.ts
 
 # Visual Studio 6 build log
 *.plg
